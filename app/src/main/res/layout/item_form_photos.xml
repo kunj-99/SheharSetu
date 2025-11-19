@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="10dp">
+
+    <TextView
+        android:id="@+id/tvLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Upload Photos"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:textColor="@color/ss_on_surface" />
+
+    <TextView
+        android:id="@+id/tvHelper"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clear, no blur"
+        android:textSize="12sp"
+        android:textColor="@color/ss_hint"
+        android:layout_marginTop="6dp"/>
+
+    <TextView
+        android:id="@+id/tvTip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Tip: The first selected photo becomes the cover. Tap any thumbnail to change or remove."
+        android:textSize="12sp"
+        android:textColor="@color/ss_hint"
+        android:layout_marginTop="2dp"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvPhotosStrip"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:layout_marginTop="8dp"
+        android:overScrollMode="never" />
+
+    <TextView
+        android:id="@+id/tvPhotoStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="@color/ss_on_surface"
+        android:layout_marginTop="6dp"
+        android:textSize="13sp" />
+</LinearLayout>

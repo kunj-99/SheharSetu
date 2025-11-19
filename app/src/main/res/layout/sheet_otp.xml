@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <!-- Header row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Verify Phone"
+            android:textStyle="bold"
+            android:textSize="18sp"/>
+
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:contentDescription="Close"/>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvMobile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="OTP sent to +91 XXXXXXX"
+        android:textSize="14sp"
+        android:layout_marginTop="6dp"/>
+
+    <!-- 6 digit boxes -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="16dp"
+        android:weightSum="6">
+
+        <EditText
+            android:id="@+id/d1"
+            style="@style/OtpBox"/>
+        <EditText
+            android:id="@+id/d2"
+            style="@style/OtpBox"/>
+        <EditText
+            android:id="@+id/d3"
+            style="@style/OtpBox"/>
+        <EditText
+            android:id="@+id/d4"
+            style="@style/OtpBox"/>
+        <EditText
+            android:id="@+id/d5"
+            style="@style/OtpBox"/>
+        <EditText
+            android:id="@+id/d6"
+            style="@style/OtpBox"/>
+    </LinearLayout>
+
+    <!-- Timer + Resend -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="10dp">
+
+        <TextView
+            android:id="@+id/tvTimer"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#666"/>
+
+        <TextView
+            android:id="@+id/tvResend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Resend OTP"
+            android:textStyle="bold"
+            android:enabled="false"
+            android:textColor="#0E5AA6"/>
+    </LinearLayout>
+
+    <!-- Verify button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnVerify"
+        style="@style/Widget.Material3.Button"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="14dp"
+        android:text="Verify"
+        android:textColor="@android:color/white"
+        android:background="@drawable/btn_primary"
+        app:cornerRadius="14dp"/>
+</LinearLayout>

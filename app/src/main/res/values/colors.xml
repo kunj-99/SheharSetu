@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:android="http://schemas.android.com/apk/res/android">
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <!-- Splash gradient base background -->
+    <color name="splash_bg">#1E7BB6</color> <!-- Blue background; change if needed -->
+    <color name="input_bg">#0FFFFFFF</color>      <!-- ~6% white -->
+    <color name="input_stroke">#40FFFFFF</color>  <!-- 25% white -->
+
+    <color name="lavender_200">#D8C8FF</color>
+    <color name="greenPrimary">#4CAF50</color>     <!-- Main theme green -->
+    <color name="greenChipBg">#E8F5E9</color>     <!-- Light background for chips -->
+            <!-- Solid white -->
+
+
+    <color name="iw_primary">#6C5CE7</color>      <!-- your purple -->
+    <color name="iw_onPrimary">#FFFFFF</color>
+    <color name="iw_secondary">#9F7AEA</color>    <!-- lighter purple -->
+    <color name="iw_surface">#111014</color>      <!-- dark surface seen in screenshot -->
+    <color name="iw_onSurface">#EAE6F7</color>
+    <color name="iw_outline">#3B3742</color>
+    <color name="iw_tonal">#CDB7FF</color>        <!-- for tonal buttons/switch track -->
+
+    <!-- Inputs -->
+    <color name="iw_text_hint">#AAEAE6F7</color>
+    <color name="iw_divider">#332C35</color>
+    <color name="iw_success">#22C55E</color>
+    <!-- Optional: secondary shades -->
+    <color name="greenDark">#388E3C</color>
+    <color name="greenLight">#C8E6C9</color>
+
+
+    <color name="primary_alpha_40">#664285F4</color> <!-- 40% alpha of primary -->
+    <color name="surface_alpha_07">#114285F4</color> <!-- 7% alpha of primary -->
+
+
+    <!-- Search icon tints -->
+    <color name="search_icon_idle">#B3FFFFFF</color>  <!-- 70% white -->
+    <color name="search_icon_active">#FFFFFFFF</color>
+
+    <color name="brand_blue">#1976D2</color>
+    <color name="brand_green">#1DB954</color>
+    <color name="card_stroke">#33000000</color>
+    <color name="royalBlue">#4169E1</color>
+    <!-- Toggle colors -->
+    <color name="mint">#00E0A4</color>
+    <color name="mint_dark_text">#000000</color>
+    <color name="mint_text_unselected">#FF666666</color>
+
+    <color name="ss_primary">#7C4DFF</color>        <!-- main purple -->
+    <color name="ss_primary_tonal">#E7DDFF</color>  <!-- lighter purple for tonal buttons -->
+    <color name="ss_on_primary">#FFFFFF</color>     <!-- text on primary -->
+
+    <color name="ss_surface">#FFFFFF</color>        <!-- screen background -->
+    <color name="ss_on_surface">#111111</color>     <!-- normal text -->
+    <color name="ss_hint">#99000000</color>         <!-- hint / helper -->
+    <color name="ss_divider">#14000000</color>
+
+    <color name="ss_translucent_white">#F2FFFFFF</color>
+    <color name="ss_alert_red">#E53935</color>
+    <color name="drawerSurface">#1E1E24</color>
+    <color name="nav_ripple">#22FFFFFF</color>
+
+
+
+
+
+</resources>
+
