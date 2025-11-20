@@ -1,5 +1,6 @@
 package com.infowave.sheharsetu;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -204,6 +205,7 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     /* ===================== OTP Bottom Sheet ===================== */
+    @SuppressLint("SetTextI18n")
     private void showOtpSheet(String mobile) {
         if (otpDialog != null && otpDialog.isShowing()) otpDialog.dismiss();
         if (resendTimer != null) resendTimer.cancel();

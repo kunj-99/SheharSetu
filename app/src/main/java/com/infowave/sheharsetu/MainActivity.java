@@ -361,9 +361,17 @@ public class MainActivity extends AppCompatActivity {
                             for (int i = 0; i < arr.length(); i++) {
                                 JSONObject o = arr.getJSONObject(i);
                                 Map<String, Object> m = new HashMap<>();
-                                m.put("id",        o.optInt("id", 0));
-                                m.put("name",      o.optString("name", ""));
-                                m.put("iconUrl",   o.optString("icon", ""));  // server key 'icon'
+                                m.put("id",   o.optInt("id", 0));
+                                m.put("name", o.optString("name", ""));
+
+                                // ---- ICON URL (full URL from backend; fallback if needed) ----
+                                String iconUrl = o.optString("icon", "");
+                                if (TextUtils.isEmpty(iconUrl)) {
+                                    iconUrl = o.optString("icon_url", "");
+                                }
+                                m.put("iconUrl", iconUrl);
+                                // ----------------------------------------------------------------
+
                                 m.put("hasNewOld", o.optInt("hasNewOld", 0) == 1);
                                 categories.add(m);
                             }
@@ -407,7 +415,15 @@ public class MainActivity extends AppCompatActivity {
                                 m.put("id",          o.optInt("id", 0));
                                 m.put("category_id", o.optInt("category_id", categoryId));
                                 m.put("name",        o.optString("name", ""));
-                                m.put("iconUrl",     o.optString("icon", ""));
+
+                                // ---- Subfilter icon (full URL from backend; fallback) ----
+                                String iconUrl = o.optString("icon", "");
+                                if (TextUtils.isEmpty(iconUrl)) {
+                                    iconUrl = o.optString("icon_url", "");
+                                }
+                                m.put("iconUrl", iconUrl);
+                                // -----------------------------------------------------------
+
                                 subs.add(m);
                             }
                         }
@@ -449,15 +465,30 @@ public class MainActivity extends AppCompatActivity {
                             for (int i = 0; i < arr.length(); i++) {
                                 JSONObject o = arr.getJSONObject(i);
                                 Map<String, Object> m = new HashMap<>();
-                                m.put("id",            o.optInt("id", 0));
-                                m.put("categoryId",    o.optInt("category_id", 0));
-                                m.put("subFilterId",   o.optInt("subcategory_id", 0));
-                                m.put("title",         o.optString("title", ""));
+                                m.put("id",          o.optInt("id", 0));
+                                m.put("categoryId",  o.optInt("category_id", 0));
+                                m.put("subFilterId", o.optInt("subcategory_id", 0));
+                                m.put("title",       o.optString("title", ""));
+
                                 // price: server may send number; show as plain string for card
-                                m.put("price",         o.opt("price") == null ? "" : String.valueOf(o.opt("price")));
-                                m.put("city",          o.optString("city", ""));
-                                m.put("imageUrl",      o.isNull("image_url") ? "" : o.optString("image_url",""));
-                                m.put("isNew",         o.optInt("is_new", 0) == 1);
+                                m.put("price",
+                                        o.opt("price") == null
+                                                ? ""
+                                                : String.valueOf(o.opt("price")));
+
+                                m.put("city", o.optString("city", ""));
+
+                                // ---- Product image (prefer image_url, fallback to image) ----
+                                String imageUrl = "";
+                                if (!o.isNull("image_url")) {
+                                    imageUrl = o.optString("image_url", "");
+                                } else if (!o.isNull("image")) {
+                                    imageUrl = o.optString("image", "");
+                                }
+                                m.put("imageUrl", imageUrl);
+                                // -------------------------------------------------------------
+
+                                m.put("isNew", o.optInt("is_new", 0) == 1);
                                 currentProducts.add(m);
                             }
                         }

@@ -9,11 +9,6 @@ public final class ApiRoutes {
 
     public static final String SAVE_PROFILE = BASE_URL + "/save_profile.php";
 
-
-
-
-
-
     public static final String GET_STATES = BASE_URL + "/list_states.php";
     public static final String GET_DISTRICTS = BASE_URL + "/list_districts.php";
 

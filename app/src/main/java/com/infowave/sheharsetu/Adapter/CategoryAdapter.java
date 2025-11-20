@@ -13,8 +13,9 @@ import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.infowave.sheharsetu.R;
-// Optional (uncomment if using Glide)
-// import com.bumptech.glide.Glide;
+
+// Enable Glide for loading network images
+import com.bumptech.glide.Glide;
 
 import java.util.List;
 import java.util.Map;
@@ -51,28 +52,32 @@ public class CategoryAdapter extends RecyclerView.Adapter<CategoryAdapter.VH> {
     public void onBindViewHolder(@NonNull VH h, int position) {
         Map<String, Object> m = items.get(position);
 
-        int id = getInt(m, "id", -1);
+        int id      = getInt(m, "id", -1);
         int iconRes = getInt(m, "iconRes", 0);
         int nameRes = getInt(m, "nameRes", 0);
         String nameTxt = getString(m, "name", "");         // dynamic title
-        String iconUrl = getString(m, "iconUrl", "");      // dynamic icon (optional)
+        String iconUrl = getString(m, "iconUrl", "");      // dynamic icon from backend
 
-        // ---- Title: prefer string; fallback to nameRes if valid (>0) ----
+        // ---- Title: prefer string; fallback to nameRes ----
         if (!TextUtils.isEmpty(nameTxt)) {
             h.title.setText(nameTxt);
         } else if (nameRes != 0) {
             h.title.setText(nameRes);
         } else {
-            h.title.setText(""); // avoid crash
+            h.title.setText("");
         }
 
-        // ---- Icon: prefer iconRes; else iconUrl; else placeholder ----
+        // ---- Icon: prefer iconRes; else iconUrl (Glide); else placeholder ----
         if (iconRes != 0) {
+            // Static drawable from resources
             h.icon.setImageResource(iconRes);
         } else if (!TextUtils.isEmpty(iconUrl)) {
-            // Optional Glide:
-            // Glide.with(h.icon).load(iconUrl).placeholder(placeholderIcon).error(placeholderIcon).into(h.icon);
-            h.icon.setImageResource(placeholderIcon); // fallback if Glide not used
+            // Load from network using Glide (full URL coming from list_categories.php)
+            Glide.with(h.icon.getContext())
+                    .load(iconUrl)
+                    .placeholder(placeholderIcon)
+                    .error(placeholderIcon)
+                    .into(h.icon);
         } else {
             h.icon.setImageResource(placeholderIcon);
         }
@@ -115,6 +120,7 @@ public class CategoryAdapter extends RecyclerView.Adapter<CategoryAdapter.VH> {
         try { return Integer.parseInt(String.valueOf(o)); } catch (Exception ignore) {}
         return def;
     }
+
     private static String getString(Map<String, Object> m, String key, String def) {
         if (m == null) return def;
         Object o = m.get(key);

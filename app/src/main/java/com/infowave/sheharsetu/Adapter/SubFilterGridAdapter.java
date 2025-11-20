@@ -13,8 +13,8 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.card.MaterialCardView;
 import com.infowave.sheharsetu.R;
-// Optional Glide
-// import com.bumptech.glide.Glide;
+// Enable Glide for loading subcategory icons from backend
+import com.bumptech.glide.Glide;
 
 import java.util.List;
 import java.util.Map;
@@ -47,8 +47,8 @@ public class SubFilterGridAdapter extends RecyclerView.Adapter<SubFilterGridAdap
 
         int nameRes = getInt(s, "nameRes", 0);
         int iconRes = getInt(s, "iconRes", 0);
-        String name  = getString(s, "name", "");       // dynamic
-        String iconUrl = getString(s, "iconUrl", "");  // dynamic
+        String name    = getString(s, "name", "");       // dynamic
+        String iconUrl = getString(s, "iconUrl", "");    // dynamic from backend
 
         if (!TextUtils.isEmpty(name)) {
             h.tv.setText(name);
@@ -58,11 +58,15 @@ public class SubFilterGridAdapter extends RecyclerView.Adapter<SubFilterGridAdap
             h.tv.setText("");
         }
 
+        // Icon: prefer local resource (for "All"), otherwise load URL with Glide
         if (iconRes != 0) {
             h.img.setImageResource(iconRes);
         } else if (!TextUtils.isEmpty(iconUrl)) {
-            // Glide.with(h.img).load(iconUrl).placeholder(placeholderIcon).error(placeholderIcon).into(h.img);
-            h.img.setImageResource(placeholderIcon);
+            Glide.with(h.img.getContext())
+                    .load(iconUrl)
+                    .placeholder(placeholderIcon)
+                    .error(placeholderIcon)
+                    .into(h.img);
         } else {
             h.img.setImageResource(placeholderIcon);
         }
