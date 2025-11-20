@@ -1,5 +1,6 @@
 package com.infowave.sheharsetu.Adapter;
 
+import android.annotation.SuppressLint;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -11,6 +12,7 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.google.android.material.card.MaterialCardView;
 import com.infowave.sheharsetu.R;
 
@@ -23,7 +25,6 @@ public class CategoryGridAdapter extends RecyclerView.Adapter<CategoryGridAdapte
 
     private final List<Item> data = new ArrayList<>();
     private final OnPick onPick;
-
     private int selectedPos = RecyclerView.NO_POSITION;
     private String selectedId = null;
 
@@ -33,6 +34,7 @@ public class CategoryGridAdapter extends RecyclerView.Adapter<CategoryGridAdapte
     }
 
     /** Replace the list and refresh. Keeps current selection by id if possible. */
+    @SuppressLint("NotifyDataSetChanged")
     public void submit(List<Item> list) {
         data.clear();
         if (list != null) data.addAll(list);
@@ -90,7 +92,12 @@ public class CategoryGridAdapter extends RecyclerView.Adapter<CategoryGridAdapte
     public void onBindViewHolder(@NonNull VH h, int position) {
         Item c = data.get(position);
         h.title.setText(c.name);
-        h.icon.setImageResource(c.iconRes);
+
+        // Use Glide to load the image from URL into the ImageView
+        Glide.with(h.icon.getContext())
+                .load(c.iconUrl) // Use the icon URL
+                .placeholder(R.drawable.ic_placeholder_circle) // Placeholder image
+                .into(h.icon);
 
         // selection visuals
         boolean isSelected = (position == selectedPos);
@@ -131,10 +138,10 @@ public class CategoryGridAdapter extends RecyclerView.Adapter<CategoryGridAdapte
     public static class Item {
         public final String id;
         public final String name;
-        public final int iconRes;
+        public final String iconUrl; // Use iconUrl instead of iconRes
         public final boolean requiresCondition;
-        public Item(String id, String name, int iconRes, boolean requiresCondition) {
-            this.id = id; this.name = name; this.iconRes = iconRes; this.requiresCondition = requiresCondition;
+        public Item(String id, String name, String iconUrl, boolean requiresCondition) {
+            this.id = id; this.name = name; this.iconUrl = iconUrl; this.requiresCondition = requiresCondition;
         }
     }
 

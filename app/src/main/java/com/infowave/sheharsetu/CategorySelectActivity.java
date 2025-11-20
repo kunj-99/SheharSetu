@@ -7,7 +7,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
-import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -36,14 +35,11 @@ import java.util.Map;
 public class CategorySelectActivity extends AppCompatActivity {
 
     private MaterialToolbar topBar;
-
     private RecyclerView rvCategories, rvSubcategories;
     private TextView tvSubTitle;
-
     private View conditionRow;
     private ChipGroup cgCondition;
     private Chip chipNew, chipUsed;
-
     private MaterialButton btnContinue;
 
     private final List<Category> categories = new ArrayList<>();
@@ -76,7 +72,6 @@ public class CategorySelectActivity extends AppCompatActivity {
 
         // yahi method naam same rakha – ab ye API se data layega
         seedData();
-
         updateCtaState();
     }
 
@@ -86,29 +81,24 @@ public class CategorySelectActivity extends AppCompatActivity {
             topBar.setNavigationOnClickListener(v -> onBackPressed());
         }
 
-        rvCategories    = findViewById(R.id.rvCategories);
+        rvCategories = findViewById(R.id.rvCategories);
         rvSubcategories = findViewById(R.id.rvSubcategories);
-        tvSubTitle      = findViewById(R.id.tvSubTitle);
+        tvSubTitle = findViewById(R.id.tvSubTitle);
 
         conditionRow = findViewById(R.id.conditionRow);
-        cgCondition  = findViewById(R.id.cgCondition);
-        chipNew      = findViewById(R.id.chipNew);
-        chipUsed     = findViewById(R.id.chipUsed);
+        cgCondition = findViewById(R.id.cgCondition);
+        chipNew = findViewById(R.id.chipNew);
+        chipUsed = findViewById(R.id.chipUsed);
 
         btnContinue = findViewById(R.id.btnContinue);
     }
 
-    /**
-     * OLD: Static demo data
-     * NEW: Server se categories fetch karega (list_categories.php)
-     */
     private void seedData() {
         loadCategoriesFromApi();
     }
 
-    /** Categories ko backend se load karega. */
     private void loadCategoriesFromApi() {
-        String url = ApiRoutes.GET_CATEGORIES; // .../list_categories.php
+        String url = ApiRoutes.GET_CATEGORIES;
 
         StringRequest req = new StringRequest(
                 Request.Method.GET,
@@ -128,29 +118,25 @@ public class CategorySelectActivity extends AppCompatActivity {
                         categories.clear();
 
                         if (dataArr != null) {
-                            @DrawableRes int ph = R.drawable.ic_placeholder_circle; // same as pehle
                             for (int i = 0; i < dataArr.length(); i++) {
                                 JSONObject obj = dataArr.getJSONObject(i);
 
-                                // PHP se: id, name, icon, hasNewOld (0/1)
-                                String id   = obj.optString("id", "");
+                                String id = obj.optString("id", "");
                                 String name = obj.optString("name", "");
-                                // icon URL aa raha hoga, but abhi UI same rakhne ke liye
-                                // local placeholder drawable hi use karenge
+                                String iconUrl = obj.optString("icon", "");
                                 boolean requiresCond = obj.optInt("hasNewOld", 0) == 1;
 
                                 if (!id.isEmpty() && !name.isEmpty()) {
                                     categories.add(new Category(
                                             id,
                                             name,
-                                            safeImg(R.drawable.image1, ph),
+                                            iconUrl,
                                             requiresCond
                                     ));
                                 }
                             }
                         }
 
-                        // Adapter ko new list de do (UI same rahega, data dynamic ho jayega)
                         categoryAdapter.submit(mapToCategoryItems(categories));
 
                     } catch (JSONException e) {
@@ -169,23 +155,16 @@ public class CategorySelectActivity extends AppCompatActivity {
         VolleySingleton.getInstance(this).add(req);
     }
 
-    private int safeImg(@DrawableRes int tryRes, @DrawableRes int fallback) {
-        return tryRes != 0 ? tryRes : fallback;
-    }
-
     private void setupLists() {
-        // Categories grid (3 columns)
         rvCategories.setLayoutManager(new GridLayoutManager(this, 3));
         rvCategories.setHasFixedSize(true);
         addGridSpacing(rvCategories, 12);
 
         categoryAdapter = new CategoryGridAdapter(mapToCategoryItems(categories), (item, pos) -> {
-            // user ne koi category select ki
-            selectedCategory = new Category(item.id, item.name, item.iconRes, item.requiresCondition);
+            selectedCategory = new Category(item.id, item.name, item.iconUrl, item.requiresCondition);
             selectedSub = null;
             selectedCondition = null;
 
-            // ab is category ke subcategories server se laayenge
             loadSubcategories(item.id);
 
             tvSubTitle.setVisibility(View.VISIBLE);
@@ -197,13 +176,12 @@ public class CategorySelectActivity extends AppCompatActivity {
         });
         rvCategories.setAdapter(categoryAdapter);
 
-        // Subcategories grid
         rvSubcategories.setLayoutManager(new GridLayoutManager(this, 3));
         rvSubcategories.setHasFixedSize(true);
         addGridSpacing(rvSubcategories, 12);
 
         subcategoryAdapter = new SubcategoryGridAdapter(new ArrayList<>(), (s, pos) -> {
-            selectedSub = new Subcategory(s.id, s.parentId, s.name, s.iconRes, s.requiresCondition);
+            selectedSub = new Subcategory(s.id, s.parentId, s.name, s.iconUrl, s.requiresCondition);
 
             boolean needCond = (selectedSub.requiresCondition != null)
                     ? selectedSub.requiresCondition
@@ -220,14 +198,13 @@ public class CategorySelectActivity extends AppCompatActivity {
 
     private void setupClicks() {
         cgCondition.setOnCheckedChangeListener((group, checkedId) -> {
-            if (checkedId == R.id.chipNew)      selectedCondition = "new";
+            if (checkedId == R.id.chipNew) selectedCondition = "new";
             else if (checkedId == R.id.chipUsed) selectedCondition = "used";
-            else                                 selectedCondition = null;
+            else selectedCondition = null;
             updateCtaState();
         });
 
         btnContinue.setOnClickListener(v -> {
-            // Validate selections
             if (selectedCategory == null) {
                 Toast.makeText(this, "Please select a category.", Toast.LENGTH_SHORT).show();
                 return;
@@ -244,37 +221,27 @@ public class CategorySelectActivity extends AppCompatActivity {
                 return;
             }
 
-            // Build and launch DynamicFormActivity
             Intent intent = new Intent(CategorySelectActivity.this, DynamicFormActivity.class);
-
-            // DynamicFormActivity ke liye primary category string
             intent.putExtra(DynamicFormActivity.EXTRA_CATEGORY, selectedCategory.name);
 
-            // Rich context (IDs + names + condition)
             intent.putExtra("category_id", selectedCategory.id);
             intent.putExtra("category_name", selectedCategory.name);
             intent.putExtra("subcategory_id", selectedSub.id);
             intent.putExtra("subcategory_name", selectedSub.name);
-            if (selectedCondition != null) intent.putExtra("condition", selectedCondition); // "new" or "used"
+            if (selectedCondition != null) intent.putExtra("condition", selectedCondition);
 
             startActivity(intent);
-            // Do NOT finish(); so user can come back and change.
         });
     }
 
-    /**
-     * Ab ye method server se subcategories fetch karega
-     * (list_subcategories.php?category_id=XYZ)
-     */
     private void loadSubcategories(String catId) {
-        // Cache use karna ho to:
         if (subMap.containsKey(catId)) {
             List<Subcategory> cached = subMap.get(catId);
             List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
             if (cached != null) {
                 for (Subcategory s : cached) {
                     ui.add(new SubcategoryGridAdapter.Item(
-                            s.id, s.parentId, s.name, s.iconRes, s.requiresCondition
+                            s.id, s.parentId, s.name, s.iconUrl, s.requiresCondition
                     ));
                 }
             }
@@ -303,13 +270,12 @@ public class CategorySelectActivity extends AppCompatActivity {
                         List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
 
                         if (dataArr != null) {
-                            @DrawableRes int ph = R.drawable.ic_placeholder_circle;
                             for (int i = 0; i < dataArr.length(); i++) {
                                 JSONObject obj = dataArr.getJSONObject(i);
 
-                                // expected fields: id, name, maybe hasNewOld
-                                String id   = obj.optString("id", "");
+                                String id = obj.optString("id", "");
                                 String name = obj.optString("name", "");
+                                String iconUrl = obj.optString("icon", "");
                                 boolean requiresCond = obj.optInt("hasNewOld", 0) == 1;
 
                                 if (!id.isEmpty() && !name.isEmpty()) {
@@ -317,21 +283,19 @@ public class CategorySelectActivity extends AppCompatActivity {
                                             id,
                                             catId,
                                             name,
-                                            safeImg(R.drawable.image1, ph),
+                                            iconUrl,  // Use the icon URL fetched from API
                                             requiresCond
                                     );
                                     subs.add(s);
                                     ui.add(new SubcategoryGridAdapter.Item(
-                                            s.id, s.parentId, s.name, s.iconRes, s.requiresCondition
+                                            s.id, s.parentId, s.name, s.iconUrl, s.requiresCondition
                                     ));
                                 }
                             }
                         }
 
-                        // cache
                         subMap.put(catId, subs);
 
-                        // adapter update
                         subcategoryAdapter.submit(ui);
 
                     } catch (JSONException e) {
@@ -367,43 +331,59 @@ public class CategorySelectActivity extends AppCompatActivity {
     private List<CategoryGridAdapter.Item> mapToCategoryItems(List<Category> list) {
         List<CategoryGridAdapter.Item> out = new ArrayList<>();
         for (Category c : list) {
-            out.add(new CategoryGridAdapter.Item(c.id, c.name, c.iconRes, c.requiresCondition));
+            out.add(new CategoryGridAdapter.Item(c.id, c.name, c.iconUrl, c.requiresCondition));
         }
         return out;
     }
 
+    @SafeVarargs
     private <T> List<T> list(T... arr) {
         List<T> l = new ArrayList<>();
         for (T t : arr) l.add(t);
         return l;
     }
 
-    // Simple spacing between grid items
     private void addGridSpacing(RecyclerView rv, int dp) {
         int px = Math.round(getResources().getDisplayMetrics().density * dp);
         rv.addItemDecoration(new RecyclerView.ItemDecoration() {
             @Override
             public void getItemOffsets(android.graphics.Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
-                outRect.left = px/2;
-                outRect.right = px/2;
-                outRect.top = px/2;
-                outRect.bottom = px/2;
+                outRect.left = px / 2;
+                outRect.right = px / 2;
+                outRect.top = px / 2;
+                outRect.bottom = px / 2;
             }
         });
     }
 
     // Models
     static class Category {
-        final String id; final String name; @DrawableRes final int iconRes; final boolean requiresCondition;
-        Category(String id, String name, int iconRes, boolean requiresCondition) {
-            this.id = id; this.name = name; this.iconRes = iconRes; this.requiresCondition = requiresCondition;
+        final String id;
+        final String name;
+        final String iconUrl;
+        final boolean requiresCondition;
+
+        Category(String id, String name, String iconUrl, boolean requiresCondition) {
+            this.id = id;
+            this.name = name;
+            this.iconUrl = iconUrl;
+            this.requiresCondition = requiresCondition;
         }
     }
+
     static class Subcategory {
-        final String id; final String parentId; final String name; @DrawableRes final int iconRes;
-        final Boolean requiresCondition; // null => inherit category
-        Subcategory(String id, String parentId, String name, int iconRes, @Nullable Boolean requiresCondition) {
-            this.id = id; this.parentId = parentId; this.name = name; this.iconRes = iconRes; this.requiresCondition = requiresCondition;
+        final String id;
+        final String parentId;
+        final String name;
+        final String iconUrl;
+        final Boolean requiresCondition;
+
+        Subcategory(String id, String parentId, String name, String iconUrl, @Nullable Boolean requiresCondition) {
+            this.id = id;
+            this.parentId = parentId;
+            this.name = name;
+            this.iconUrl = iconUrl;
+            this.requiresCondition = requiresCondition;
         }
     }
 }

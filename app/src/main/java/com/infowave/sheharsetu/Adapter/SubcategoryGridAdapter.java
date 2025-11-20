@@ -11,6 +11,7 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.google.android.material.card.MaterialCardView;
 import com.infowave.sheharsetu.R;
 
@@ -82,7 +83,12 @@ public class SubcategoryGridAdapter extends RecyclerView.Adapter<SubcategoryGrid
     public void onBindViewHolder(@NonNull VH h, int position) {
         Item s = data.get(position);
         h.title.setText(s.name);
-        h.icon.setImageResource(s.iconRes);
+
+        // Use Glide to load the image from URL into the ImageView
+        Glide.with(h.icon.getContext())
+                .load(s.iconUrl) // Use the icon URL
+                .placeholder(R.drawable.ic_placeholder_circle) // Placeholder image
+                .into(h.icon);
 
         boolean isSel = position == selected;
         @ColorInt int stroke = ContextCompat.getColor(h.card.getContext(), R.color.greenPrimary);
@@ -105,13 +111,16 @@ public class SubcategoryGridAdapter extends RecyclerView.Adapter<SubcategoryGrid
     @Override public int getItemCount() { return data.size(); }
 
     static class VH extends RecyclerView.ViewHolder {
-        final MaterialCardView card; final ImageView icon; final TextView title; final View badge;
+        final MaterialCardView card;
+        final ImageView icon;
+        final TextView title;
+        final View badge;
         VH(@NonNull View itemView) {
             super(itemView);
             card  = (MaterialCardView) itemView;
             icon  = itemView.findViewById(R.id.imgIcon);
             title = itemView.findViewById(R.id.tvName);
-            badge = itemView.findViewById(R.id.badge); // must exist in XML
+            badge = itemView.findViewById(R.id.badge);
         }
     }
 
@@ -119,10 +128,10 @@ public class SubcategoryGridAdapter extends RecyclerView.Adapter<SubcategoryGrid
         public final String id;
         public final String parentId;
         public final String name;
-        public final int iconRes;
+        public final String iconUrl; // Use iconUrl instead of iconRes
         public final Boolean requiresCondition;
-        public Item(String id, String parentId, String name, int iconRes, Boolean requiresCondition) {
-            this.id = id; this.parentId = parentId; this.name = name; this.iconRes = iconRes; this.requiresCondition = requiresCondition;
+        public Item(String id, String parentId, String name, String iconUrl, Boolean requiresCondition) {
+            this.id = id; this.parentId = parentId; this.name = name; this.iconUrl = iconUrl; this.requiresCondition = requiresCondition;
         }
     }
 
