@@ -3,7 +3,6 @@ package com.infowave.sheharsetu;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
-import android.widget.Space;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -14,12 +13,20 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.android.volley.Request;
+import com.android.volley.toolbox.StringRequest;
+import com.infowave.sheharsetu.Adapter.CategoryGridAdapter;
+import com.infowave.sheharsetu.Adapter.SubcategoryGridAdapter;
+import com.infowave.sheharsetu.net.ApiRoutes;
+import com.infowave.sheharsetu.net.VolleySingleton;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
-import com.infowave.sheharsetu.Adapter.CategoryGridAdapter;
-import com.infowave.sheharsetu.Adapter.SubcategoryGridAdapter;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,21 +59,24 @@ public class CategorySelectActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // Set status bar color to black
+
+        // Status / navigation bar colors as before
         getWindow().setStatusBarColor(android.graphics.Color.BLACK);
         getWindow().setNavigationBarColor(android.graphics.Color.BLACK);
         new androidx.core.view.WindowInsetsControllerCompat(
                 getWindow(), getWindow().getDecorView()
         ).setAppearanceLightStatusBars(false);
-        
+
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_category_select);
 
         bindViews();
-        seedData();
         setupLists();
         setupClicks();
+
+        // yahi method naam same rakha – ab ye API se data layega
+        seedData();
+
         updateCtaState();
     }
 
@@ -88,41 +98,75 @@ public class CategorySelectActivity extends AppCompatActivity {
         btnContinue = findViewById(R.id.btnContinue);
     }
 
-    /** Provide demo data (replace images with your drawables). */
+    /**
+     * OLD: Static demo data
+     * NEW: Server se categories fetch karega (list_categories.php)
+     */
     private void seedData() {
-        @DrawableRes int ph = R.drawable.ic_placeholder_circle;
+        loadCategoriesFromApi();
+    }
 
-        categories.add(new Category("veh","Vehicles",      safeImg(R.drawable.image1, ph), true));
-        categories.add(new Category("elec","Electronics",  safeImg(R.drawable.image1, ph), true));
-        categories.add(new Category("agri","Agriculture",  safeImg(R.drawable.image1, ph), false));
-        categories.add(new Category("live","Livestock",    safeImg(R.drawable.image1, ph), false));
-        categories.add(new Category("rent","Rentals",      safeImg(R.drawable.image1, ph), false));
+    /** Categories ko backend se load karega. */
+    private void loadCategoriesFromApi() {
+        String url = ApiRoutes.GET_CATEGORIES; // .../list_categories.php
 
-        subMap.put("veh", list(
-                new Subcategory("car","veh","Cars",                 safeImg(R.drawable.image1, ph),  true),
-                new Subcategory("bike","veh","Bikes & Scooters",    safeImg(R.drawable.image1, ph),  true),
-                new Subcategory("tractor","veh","Tractors",         safeImg(R.drawable.image1, ph),  true),
-                new Subcategory("cycle","veh","Bicycles",           safeImg(R.drawable.image1, ph),  true)
-        ));
-        subMap.put("elec", list(
-                new Subcategory("mobile","elec","Mobiles",          safeImg(R.drawable.image1, ph),  true),
-                new Subcategory("tv","elec","TVs",                  safeImg(R.drawable.image1, ph),  true),
-                new Subcategory("laptop","elec","Laptops",          safeImg(R.drawable.image1, ph),  true),
-                new Subcategory("appliance","elec","Appliances",    safeImg(R.drawable.image1, ph),  true)
-        ));
-        subMap.put("agri", list(
-                new Subcategory("seed","agri","Seeds & Fertilizers",safeImg(R.drawable.image1, ph),  false),
-                new Subcategory("tool","agri","Tools & Parts",      safeImg(R.drawable.image1, ph),  true),  // only here condition
-                new Subcategory("chem","agri","Agri Chemicals",     safeImg(R.drawable.image1, ph),  false)
-        ));
-        subMap.put("live", list(
-                new Subcategory("animal","live","Animals",          safeImg(R.drawable.image1, ph),  false),
-                new Subcategory("dairy","live","Dairy Products",    safeImg(R.drawable.image1, ph),  false)
-        ));
-        subMap.put("rent", list(
-                new Subcategory("flat","rent","Flat/House Rent",    safeImg(R.drawable.image1, ph),  false),
-                new Subcategory("shop","rent","Shop/Office Rent",   safeImg(R.drawable.image1, ph),  false)
-        ));
+        StringRequest req = new StringRequest(
+                Request.Method.GET,
+                url,
+                response -> {
+                    try {
+                        JSONObject root = new JSONObject(response);
+                        String status = root.optString("status", "");
+                        if (!"success".equalsIgnoreCase(status)) {
+                            Toast.makeText(this,
+                                    root.optString("message", "Failed to load categories."),
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        JSONArray dataArr = root.optJSONArray("data");
+                        categories.clear();
+
+                        if (dataArr != null) {
+                            @DrawableRes int ph = R.drawable.ic_placeholder_circle; // same as pehle
+                            for (int i = 0; i < dataArr.length(); i++) {
+                                JSONObject obj = dataArr.getJSONObject(i);
+
+                                // PHP se: id, name, icon, hasNewOld (0/1)
+                                String id   = obj.optString("id", "");
+                                String name = obj.optString("name", "");
+                                // icon URL aa raha hoga, but abhi UI same rakhne ke liye
+                                // local placeholder drawable hi use karenge
+                                boolean requiresCond = obj.optInt("hasNewOld", 0) == 1;
+
+                                if (!id.isEmpty() && !name.isEmpty()) {
+                                    categories.add(new Category(
+                                            id,
+                                            name,
+                                            safeImg(R.drawable.image1, ph),
+                                            requiresCond
+                                    ));
+                                }
+                            }
+                        }
+
+                        // Adapter ko new list de do (UI same rahega, data dynamic ho jayega)
+                        categoryAdapter.submit(mapToCategoryItems(categories));
+
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                        Toast.makeText(this, "Parsing error (categories).", Toast.LENGTH_SHORT).show();
+                    }
+                },
+                error -> {
+                    error.printStackTrace();
+                    Toast.makeText(this,
+                            "Unable to load categories. Please check internet.",
+                            Toast.LENGTH_SHORT).show();
+                }
+        );
+
+        VolleySingleton.getInstance(this).add(req);
     }
 
     private int safeImg(@DrawableRes int tryRes, @DrawableRes int fallback) {
@@ -136,10 +180,12 @@ public class CategorySelectActivity extends AppCompatActivity {
         addGridSpacing(rvCategories, 12);
 
         categoryAdapter = new CategoryGridAdapter(mapToCategoryItems(categories), (item, pos) -> {
+            // user ne koi category select ki
             selectedCategory = new Category(item.id, item.name, item.iconRes, item.requiresCondition);
             selectedSub = null;
             selectedCondition = null;
 
+            // ab is category ke subcategories server se laayenge
             loadSubcategories(item.id);
 
             tvSubTitle.setVisibility(View.VISIBLE);
@@ -201,11 +247,10 @@ public class CategorySelectActivity extends AppCompatActivity {
             // Build and launch DynamicFormActivity
             Intent intent = new Intent(CategorySelectActivity.this, DynamicFormActivity.class);
 
-            // Primary category string expected by DynamicFormActivity's schema:
-            // We'll pass the category NAME. (If it doesn't match special cases there, it falls back to "General".)
+            // DynamicFormActivity ke liye primary category string
             intent.putExtra(DynamicFormActivity.EXTRA_CATEGORY, selectedCategory.name);
 
-            // Pass rich context too (useful if you want custom schemas later)
+            // Rich context (IDs + names + condition)
             intent.putExtra("category_id", selectedCategory.id);
             intent.putExtra("category_name", selectedCategory.name);
             intent.putExtra("subcategory_id", selectedSub.id);
@@ -217,16 +262,92 @@ public class CategorySelectActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Ab ye method server se subcategories fetch karega
+     * (list_subcategories.php?category_id=XYZ)
+     */
     private void loadSubcategories(String catId) {
-        List<Subcategory> subs = subMap.get(catId);
-        List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
-        if (subs != null) {
-            for (Subcategory s : subs) {
-                ui.add(new SubcategoryGridAdapter.Item(
-                        s.id, s.parentId, s.name, s.iconRes, s.requiresCondition));
+        // Cache use karna ho to:
+        if (subMap.containsKey(catId)) {
+            List<Subcategory> cached = subMap.get(catId);
+            List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
+            if (cached != null) {
+                for (Subcategory s : cached) {
+                    ui.add(new SubcategoryGridAdapter.Item(
+                            s.id, s.parentId, s.name, s.iconRes, s.requiresCondition
+                    ));
+                }
             }
+            subcategoryAdapter.submit(ui);
+            return;
         }
-        subcategoryAdapter.submit(ui);
+
+        String url = ApiRoutes.GET_SUBCATEGORIES + "?category_id=" + catId;
+
+        StringRequest req = new StringRequest(
+                Request.Method.GET,
+                url,
+                response -> {
+                    try {
+                        JSONObject root = new JSONObject(response);
+                        String status = root.optString("status", "");
+                        if (!"success".equalsIgnoreCase(status)) {
+                            Toast.makeText(this,
+                                    root.optString("message", "Failed to load subcategories."),
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        JSONArray dataArr = root.optJSONArray("data");
+                        List<Subcategory> subs = new ArrayList<>();
+                        List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
+
+                        if (dataArr != null) {
+                            @DrawableRes int ph = R.drawable.ic_placeholder_circle;
+                            for (int i = 0; i < dataArr.length(); i++) {
+                                JSONObject obj = dataArr.getJSONObject(i);
+
+                                // expected fields: id, name, maybe hasNewOld
+                                String id   = obj.optString("id", "");
+                                String name = obj.optString("name", "");
+                                boolean requiresCond = obj.optInt("hasNewOld", 0) == 1;
+
+                                if (!id.isEmpty() && !name.isEmpty()) {
+                                    Subcategory s = new Subcategory(
+                                            id,
+                                            catId,
+                                            name,
+                                            safeImg(R.drawable.image1, ph),
+                                            requiresCond
+                                    );
+                                    subs.add(s);
+                                    ui.add(new SubcategoryGridAdapter.Item(
+                                            s.id, s.parentId, s.name, s.iconRes, s.requiresCondition
+                                    ));
+                                }
+                            }
+                        }
+
+                        // cache
+                        subMap.put(catId, subs);
+
+                        // adapter update
+                        subcategoryAdapter.submit(ui);
+
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                        Toast.makeText(this, "Parsing error (subcategories).", Toast.LENGTH_SHORT).show();
+                    }
+                },
+                error -> {
+                    error.printStackTrace();
+                    Toast.makeText(this,
+                            "Unable to load subcategories. Please check internet.",
+                            Toast.LENGTH_SHORT).show();
+                }
+        );
+
+        VolleySingleton.getInstance(this).add(req);
     }
 
     private void updateCtaState() {

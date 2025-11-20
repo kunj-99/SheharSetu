@@ -23,6 +23,13 @@ public final class ApiRoutes {
     public static final String GET_LISTING     = BASE_URL + "/get_listing.php";
 
 
+    public static final String GET_FORM_SCHEMA   = BASE_URL + "/get_form_schema.php";
+
+
+
+    public static final String CREATE_LISTING    = BASE_URL + "/create_listing.php";
+
+
 
     private ApiRoutes() {}
 }

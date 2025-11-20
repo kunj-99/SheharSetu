@@ -30,14 +30,16 @@ import java.util.*;
  * Field map keys:
  *  - key, label, hint, type (TEXT, NUMBER, PHONE, EMAIL, DATE, DROPDOWN, CHECKBOX, SWITCH, TEXTAREA, CURRENCY, LOCATION, PHOTOS)
  *  - required (Boolean)
- *  - options (List<String>) for DROPDOWN
+ *  - options:
+ *      - static mode: List<String>
+ *      - backend mode: List<Map<String,Object>> with "value" and "label"
  */
 public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     /* ================= Callbacks to Activity ================= */
     public interface Callbacks {
-        void pickCoverPhoto(String fieldKey);   // if you have a separate "cover" picker
-        void pickMorePhotos(String fieldKey);   // launch ACTION_OPEN_DOCUMENT/MULTIPLE
+        void pickCoverPhoto(String fieldKey);
+        void pickMorePhotos(String fieldKey);
         void requestMyLocation(String fieldKey);
         void showToast(String msg);
     }
@@ -61,6 +63,7 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
     public DynamicFormAdapter(List<Map<String, Object>> fields, Callbacks callbacks) {
         this.fields = fields != null ? fields : new ArrayList<>();
         this.callbacks = callbacks;
+
         // initialize answers
         for (Map<String, Object> f : this.fields) {
             String key = s(f.get("key"));
@@ -173,24 +176,41 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         } else if (h instanceof VHDropdown) {
             VHDropdown vh = (VHDropdown) h;
             vh.tvLabel.setText(label + (req(f) ? " *" : ""));
-            @SuppressWarnings("unchecked")
-            List<String> opts = (List<String>) f.get("options");
-            if (opts == null || opts.isEmpty()) {
-                opts = new ArrayList<>();
-                opts.add("Select...");
-            } else if (!"Select...".equalsIgnoreCase(opts.get(0))) {
-                // Ensure first item is the hint
-                List<String> withHint = new ArrayList<>();
-                withHint.add("Select...");
-                withHint.addAll(opts);
-                opts = withHint;
-            }
 
             final Context ctx = vh.itemView.getContext();
-            final List<String> finalOpts = opts;
 
-            // Custom adapter: disables pos=0 and applies hint color
-            ArrayAdapter<String> ad = new ArrayAdapter<String>(ctx, R.layout.spinner_item, finalOpts) {
+            // ----- options ko normalize karo -----
+            Object optObj = f.get("options");
+            List<String> displayList = new ArrayList<>();
+            List<String> valueList   = new ArrayList<>();
+
+            // position 0 = "Select..." (hint)
+            displayList.add("Select...");
+            valueList.add("");
+
+            if (optObj instanceof List) {
+                List<?> rawList = (List<?>) optObj;
+                for (Object o : rawList) {
+                    if (o instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<Object, Object> mo = (Map<Object, Object>) o;
+                        String val = s(mo.get("value"));
+                        String lab = s(mo.get("label"));
+                        if (TextUtils.isEmpty(lab)) lab = val;
+                        displayList.add(lab);
+                        valueList.add(val);
+                    } else {
+                        String s = String.valueOf(o);
+                        displayList.add(s);
+                        valueList.add(s);
+                    }
+                }
+            }
+
+            final List<String> finalDisplay = displayList;
+            final List<String> finalValues  = valueList;
+
+            ArrayAdapter<String> ad = new ArrayAdapter<String>(ctx, R.layout.spinner_item, finalDisplay) {
                 @Override public boolean isEnabled(int position) {
                     return position != 0; // disable "Select..."
                 }
@@ -219,21 +239,20 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             ad.setDropDownViewResource(R.layout.spinner_dropdown_item);
             vh.spinner.setAdapter(ad);
 
-            // Restore selection if we have a saved answer
+            // Saved value = actual "value"
             String saved = s(answers.get(key));
-            int idx = Math.max(0, finalOpts.indexOf(saved));
+            int idx = finalValues.indexOf(saved);
+            if (idx < 0) idx = 0;
             vh.spinner.setSelection(idx);
 
             vh.spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                    // Ignore hint row
                     if (position == 0) {
-                        answers.put(key, ""); // treat as empty
+                        answers.put(key, "");
                     } else {
-                        answers.put(key, finalOpts.get(position));
+                        answers.put(key, finalValues.get(position)); // store VALUE
                     }
 
-                    // Ensure selected view uses correct color
                     if (view instanceof TextView) {
                         ((TextView) view).setTextColor(
                                 ContextCompat.getColor(ctx, position == 0 ? R.color.ss_hint : R.color.ss_on_surface)
@@ -368,13 +387,11 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         }
     }
 
-    /** Set a text-type answer (e.g., programmatic location). */
     public void setTextAnswer(String fieldKey, String value) {
         answers.put(fieldKey, value == null ? "" : value);
         notifyDataSetChanged();
     }
 
-    /** Set cover photo from picker (optional separate picker). */
     public void setCoverPhoto(String fieldKey, Uri uri) {
         if (uri == null) return;
         @SuppressWarnings("unchecked")
@@ -384,7 +401,6 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         notifyDataSetChanged();
     }
 
-    /** Add multiple photos; if no cover yet, first becomes cover. */
     public void addMorePhotos(String fieldKey, List<Uri> uris) {
         if (uris == null || uris.isEmpty()) return;
 
@@ -439,14 +455,13 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                             toast("Please accept: " + label); return null;
                         }
                     } else if ("DROPDOWN".equalsIgnoreCase(type)) {
-                        @SuppressWarnings("unchecked") List<String> opts = (List<String>) f.get("options");
-                        if (opts != null && !opts.isEmpty()) {
-                            if (TextUtils.isEmpty(sval) || "Select...".equalsIgnoreCase(sval)) {
-                                toast("Please select " + label); return null;
-                            }
+                        // VALUE empty => not selected
+                        if (TextUtils.isEmpty(sval)) {
+                            toast("Please select " + label); return null;
                         }
                     } else if ("PHOTOS".equalsIgnoreCase(type)) {
-                        @SuppressWarnings("unchecked") Map<String, Object> ph = (Map<String, Object>) val;
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> ph = (Map<String, Object>) val;
                         String cover = ph == null ? "" : s(ph.get("cover"));
                         if (TextUtils.isEmpty(cover)) { toast("Please add a cover photo"); return null; }
                     } else {
@@ -661,7 +676,7 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             super(v);
             tvLabel = v.findViewById(R.id.tvLabel);
             tvHelper = v.findViewById(R.id.tvHelper);
-            tvTip = v.findViewById(R.id.tvTip);        // optional (safe if null)
+            tvTip = v.findViewById(R.id.tvTip);
             tvPhotoStatus = v.findViewById(R.id.tvPhotoStatus);
             rv = v.findViewById(R.id.rvPhotosStrip);
         }
