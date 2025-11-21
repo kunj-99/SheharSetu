@@ -1,5 +1,6 @@
 package com.infowave.sheharsetu;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -38,8 +39,11 @@ import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.infowave.sheharsetu.Adapter.CategoryAdapter;
+import com.infowave.sheharsetu.Adapter.I18n;
+import com.infowave.sheharsetu.Adapter.LanguageManager;
 import com.infowave.sheharsetu.Adapter.ProductAdapter;
 import com.infowave.sheharsetu.Adapter.SubFilterGridAdapter;
+import com.infowave.sheharsetu.core.SessionManager;
 import com.infowave.sheharsetu.net.ApiRoutes;
 
 import org.json.JSONArray;
@@ -88,9 +92,12 @@ public class MainActivity extends AppCompatActivity {
     private CategoryAdapter catAdapter;
     private ProductAdapter productAdapterRef;
 
-    // ===== Locale Prefs =====
-    private static final String PREFS = "app_prefs";
-    private static final String KEY_LANG = "app_lang";
+    // ===== Locale Prefs (same as LanguageSelection / I18n) =====
+    private static final String PREFS    = LanguageSelection.PREFS;          // "sheharsetu_prefs"
+    private static final String KEY_LANG = LanguageSelection.KEY_LANG_CODE;  // "app_lang_code";
+
+    // ===== Session =====
+    private SessionManager session;
 
     // ===== Network =====
     private RequestQueue queue;
@@ -100,7 +107,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Apply the SAME language that user selected in LanguageSelection/UserInfo
         applySavedLocale();
+        session = new SessionManager(this);
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
         getWindow().setStatusBarColor(android.graphics.Color.BLACK);
@@ -120,10 +130,6 @@ public class MainActivity extends AppCompatActivity {
         queue = Volley.newRequestQueue(this);
 
         bindHeader();
-        setupVoiceLauncher();
-        setupSearch();
-        setupLanguageToggle();
-        setupAppDrawer();
 
         rvCategories     = findViewById(R.id.rvCategories);
         rvSubFiltersGrid = findViewById(R.id.rvSubFiltersGrid);
@@ -136,14 +142,30 @@ public class MainActivity extends AppCompatActivity {
         tvMarquee = findViewById(R.id.tvMarquee);
         tvMarquee.setSelected(true);
 
-        btnPost.setOnClickListener(v -> startActivity(new Intent(this, CategorySelectActivity.class)));
-        btnHelp.setOnClickListener(v -> startActivity(new Intent(this, HelpActivity.class)));
+        // OPTIONAL: if you add tvLangBadge in toolbar/header
+        TextView tvLangBadge = findViewById(R.id.tvLangBadge);
+        if (tvLangBadge != null) {
+            tvLangBadge.setText(
+                    I18n.t(this, "Language") + ": " + session.getLangName()
+            );
+        }
+
+        setupVoiceLauncher();
+        setupSearch();
+        setupLanguageToggle();
+        setupAppDrawer();
 
         rvCategories.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
         rvSubFiltersGrid.setLayoutManager(new GridLayoutManager(this, 3));
         rvProducts.setLayoutManager(new GridLayoutManager(this, 2));
 
         setupAdapters();
+
+        btnPost.setOnClickListener(v -> startActivity(new Intent(this, CategorySelectActivity.class)));
+        btnHelp.setOnClickListener(v -> startActivity(new Intent(this, HelpActivity.class)));
+
+        // ==== Prefetch static UI texts for this screen and apply translations ====
+        prefetchAndApplyStaticTexts();
 
         // Load dynamic data
         showProducts();
@@ -198,9 +220,12 @@ public class MainActivity extends AppCompatActivity {
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault());
-        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search…");
-        try { speechLauncher.launch(i); }
-        catch (Exception e) { Toast.makeText(this, "Voice search not available", Toast.LENGTH_SHORT).show(); }
+        i.putExtra(RecognizerIntent.EXTRA_PROMPT, I18n.t(this, "Speak to search…"));
+        try {
+            speechLauncher.launch(i);
+        } catch (Exception e) {
+            Toast.makeText(this, I18n.t(this, "Voice search not available"), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void performSearch(String query) {
@@ -209,27 +234,43 @@ public class MainActivity extends AppCompatActivity {
         fetchProducts();
     }
 
+    /**
+     * Apply the language selected in LanguageSelection/UserInfo.
+     * Uses the same PREFS + KEY_LANG as the rest of the app.
+     */
     private void applySavedLocale() {
         SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String lang = sp.getString(KEY_LANG, java.util.Locale.getDefault().getLanguage());
-        java.util.Locale locale = new java.util.Locale(lang);
-        java.util.Locale.setDefault(locale);
-        android.content.res.Configuration config = new android.content.res.Configuration();
-        config.setLocale(locale);
-        getResources().updateConfiguration(config, getResources().getDisplayMetrics());
+        String lang = sp.getString(KEY_LANG, "en");
+        LanguageManager.apply(this, lang);
     }
 
     private void setupLanguageToggle() {
         if (btnDrawer == null) return;
+
+        // Normal tap → open drawer
         btnDrawer.setOnClickListener(v -> {
             if (drawerLayout != null) drawerLayout.openDrawer(GravityCompat.START);
         });
+
+        // Long-press → quick toggle EN <-> HI using SAME prefs as LanguageSelection
         btnDrawer.setOnLongClickListener(v -> {
             SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
             String cur = sp.getString(KEY_LANG, "en");
             String next = cur.equals("en") ? "hi" : "en";
-            sp.edit().putString(KEY_LANG, next).apply();
-            Toast.makeText(this, "Language: " + next, Toast.LENGTH_SHORT).show();
+            String nextName = next.equals("en") ? "English" : "हिन्दी";
+
+            sp.edit()
+                    .putString(KEY_LANG, next)
+                    .putString(LanguageSelection.KEY_LANG_NAME, nextName)
+                    .apply();
+
+            LanguageManager.apply(this, next);
+            Toast.makeText(
+                    this,
+                    I18n.t(this, "Language") + ": " + nextName,
+                    Toast.LENGTH_SHORT
+            ).show();
+
             recreate();
             return true;
         });
@@ -253,21 +294,72 @@ public class MainActivity extends AppCompatActivity {
             navigationView.setItemIconTintList(null);
 
             if (id == R.id.nav_home) {
-                Toast.makeText(MainActivity.this, "Home", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, I18n.t(this, "Home"), Toast.LENGTH_SHORT).show();
             } else if (id == R.id.nav_post) {
                 startActivity(new Intent(MainActivity.this, CategorySelectActivity.class));
             } else if (id == R.id.nav_my_ads) {
-                Toast.makeText(MainActivity.this, "My Ads", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, I18n.t(this, "My Ads"), Toast.LENGTH_SHORT).show();
             } else if (id == R.id.nav_notifications) {
-                Toast.makeText(MainActivity.this, "Notifications", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, I18n.t(this, "Notifications"), Toast.LENGTH_SHORT).show();
             } else if (id == R.id.nav_invite) {
                 shareApp();
             } else if (id == R.id.nav_rate) {
                 rateUs();
             } else {
-                Toast.makeText(MainActivity.this, "Coming soon", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, I18n.t(this, "Coming soon"), Toast.LENGTH_SHORT).show();
             }
             return true;
+        });
+    }
+
+    // ================= Static UI translation =================
+
+    /**
+     * Prefetch static labels/hints used on this screen and apply translations.
+     */
+    private void prefetchAndApplyStaticTexts() {
+        List<String> keys = new ArrayList<>();
+
+        if (tiSearch != null && tiSearch.getHint() != null) {
+            keys.add(tiSearch.getHint().toString());
+        }
+        if (tvSectionTitle != null && tvSectionTitle.getText() != null) {
+            keys.add(tvSectionTitle.getText().toString());
+        }
+        if (tvMarquee != null && tvMarquee.getText() != null) {
+            keys.add(tvMarquee.getText().toString());
+        }
+
+        // Extra messages used on this screen
+        keys.add("Speak to search…");
+        keys.add("Voice search not available");
+        keys.add("Home");
+        keys.add("My Ads");
+        keys.add("Notifications");
+        keys.add("Coming soon");
+        keys.add("Categories error");
+        keys.add("Parse categories failed");
+        keys.add("Network error (categories)");
+        keys.add("Subcategories error");
+        keys.add("Parse subcategories failed");
+        keys.add("Network error (subcategories)");
+        keys.add("Products error");
+        keys.add("Parse products failed");
+        keys.add("Network error (products)");
+        keys.add("Share via");
+        keys.add("No app found to share");
+
+        I18n.prefetch(this, keys, () -> {
+            // Apply translated hint/texts
+            if (tiSearch != null) {
+                I18n.translateAndApplyHint(tiSearch, this);
+            }
+            if (tvSectionTitle != null && tvSectionTitle.getText() != null) {
+                tvSectionTitle.setText(I18n.t(this, tvSectionTitle.getText().toString()));
+            }
+            if (tvMarquee != null && tvMarquee.getText() != null) {
+                tvMarquee.setText(I18n.t(this, tvMarquee.getText().toString()));
+            }
         });
     }
 
@@ -284,7 +376,6 @@ public class MainActivity extends AppCompatActivity {
             toggleNewOld.setVisibility(hasNewOld ? View.VISIBLE : View.GONE);
             toggleNewOld.clearChecked();
 
-            // Load subcategories for this category and show the grid
             fetchSubFilters(selectedCategoryId);
         });
         rvCategories.setAdapter(catAdapter);
@@ -308,7 +399,11 @@ public class MainActivity extends AppCompatActivity {
         rvSubFiltersGrid.setVisibility(View.GONE);
         tvSectionTitle.setVisibility(View.VISIBLE);
         rvProducts.setVisibility(View.VISIBLE);
-        tvSectionTitle.setText(getString(R.string.featured_listings));
+        if (tvSectionTitle != null) {
+            tvSectionTitle.setText(
+                    I18n.t(this, getString(R.string.featured_listings))
+            );
+        }
     }
 
     private void ensureProductsView() {
@@ -323,7 +418,6 @@ public class MainActivity extends AppCompatActivity {
     // ================= Network: Fetchers =================
 
     private String urlCategories() {
-        // Prefer ApiRoutes if present; else compose
         String base = ApiRoutes.BASE_URL; // already without trailing slash
         return base + "/list_categories.php";
     }
@@ -340,48 +434,70 @@ public class MainActivity extends AppCompatActivity {
         if (selectedCategoryId > 0) sb.append("&category_id=").append(selectedCategoryId);
         if (selectedSubFilterId > 0) sb.append("&subcategory_id=").append(selectedSubFilterId);
         if (!TextUtils.isEmpty(searchQuery)) sb.append("&q=").append(android.net.Uri.encode(searchQuery));
-        if (showNew != null) sb.append("&is_new=").append(showNew ? "1" : "0"); // server ignores safely
+        if (showNew != null) sb.append("&is_new=").append(showNew ? "1" : "0");
         return sb.toString();
     }
 
     private void fetchCategories() {
-        JsonObjectRequest req = new JsonObjectRequest(
+        @SuppressLint("NotifyDataSetChanged") JsonObjectRequest req = new JsonObjectRequest(
                 Request.Method.GET,
                 urlCategories(),
                 null,
                 resp -> {
                     try {
                         if (!"success".equalsIgnoreCase(resp.optString("status"))) {
-                            Toast.makeText(this, "Categories error", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, I18n.t(this, "Categories error"), Toast.LENGTH_SHORT).show();
                             return;
                         }
                         JSONArray arr = resp.optJSONArray("data");
                         categories.clear();
+
+                        // Collect English names to translate
+                        List<String> catNameKeys = new ArrayList<>();
+
                         if (arr != null) {
                             for (int i = 0; i < arr.length(); i++) {
                                 JSONObject o = arr.getJSONObject(i);
                                 Map<String, Object> m = new HashMap<>();
                                 m.put("id",   o.optInt("id", 0));
-                                m.put("name", o.optString("name", ""));
+                                String nameEn = o.optString("name", "");
+                                m.put("name", nameEn);
 
-                                // ---- ICON URL (full URL from backend; fallback if needed) ----
                                 String iconUrl = o.optString("icon", "");
                                 if (TextUtils.isEmpty(iconUrl)) {
                                     iconUrl = o.optString("icon_url", "");
                                 }
                                 m.put("iconUrl", iconUrl);
-                                // ----------------------------------------------------------------
-
                                 m.put("hasNewOld", o.optInt("hasNewOld", 0) == 1);
                                 categories.add(m);
+
+                                if (!TextUtils.isEmpty(nameEn)) {
+                                    catNameKeys.add(nameEn);
+                                }
                             }
                         }
+
+                        // Show English immediately
                         catAdapter.notifyDataSetChanged();
+
+                        // Now translate the category names and refresh once ready
+                        I18n.prefetch(this, catNameKeys, () -> {
+                            for (Map<String, Object> m : categories) {
+                                Object nObj = m.get("name");
+                                if (nObj != null) {
+                                    String en = String.valueOf(nObj);
+                                    String tr = I18n.t(this, en);
+                                    m.put("name", tr);
+                                }
+                            }
+                            catAdapter.notifyDataSetChanged();
+                        });
+
                     } catch (Exception e) {
-                        Toast.makeText(this, "Parse categories failed", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, I18n.t(this, "Parse categories failed"), Toast.LENGTH_SHORT).show();
                     }
                 },
-                err -> Toast.makeText(this, "Network error (categories)", Toast.LENGTH_SHORT).show()
+                err -> Toast.makeText(this, I18n.t(this, "Network error (categories)"), Toast.LENGTH_SHORT).show()
         );
         req.setRetryPolicy(new DefaultRetryPolicy(8000, 1, 1));
         queue.add(req);
@@ -395,13 +511,12 @@ public class MainActivity extends AppCompatActivity {
                 resp -> {
                     try {
                         if (!"success".equalsIgnoreCase(resp.optString("status"))) {
-                            Toast.makeText(this, "Subcategories error", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, I18n.t(this, "Subcategories error"), Toast.LENGTH_SHORT).show();
                             return;
                         }
                         JSONArray arr = resp.optJSONArray("data");
                         List<Map<String, Object>> subs = new ArrayList<>();
 
-                        // Add "All"
                         Map<String, Object> all = new HashMap<>();
                         all.put("id", 0);
                         all.put("name", getString(R.string.sub_all));
@@ -416,33 +531,30 @@ public class MainActivity extends AppCompatActivity {
                                 m.put("category_id", o.optInt("category_id", categoryId));
                                 m.put("name",        o.optString("name", ""));
 
-                                // ---- Subfilter icon (full URL from backend; fallback) ----
                                 String iconUrl = o.optString("icon", "");
                                 if (TextUtils.isEmpty(iconUrl)) {
                                     iconUrl = o.optString("icon_url", "");
                                 }
                                 m.put("iconUrl", iconUrl);
-                                // -----------------------------------------------------------
 
                                 subs.add(m);
                             }
                         }
                         mapSubFilters.put(categoryId, subs);
 
-                        // Bind grid with click → set subId and fetch products
                         rvSubFiltersGrid.setAdapter(new SubFilterGridAdapter(subs, sub -> {
-                            selectedSubFilterId = toInt(sub.get("id"), 0); // 0 = ALL
+                            selectedSubFilterId = toInt(sub.get("id"), 0);
                             clearSearch();
                             showProducts();
-                            fetchProducts(); // important: server side filtering
+                            fetchProducts();
                         }));
                         showSubFilters();
                         catAdapter.setSelectedId(selectedCategoryId);
                     } catch (Exception e) {
-                        Toast.makeText(this, "Parse subcategories failed", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, I18n.t(this, "Parse subcategories failed"), Toast.LENGTH_SHORT).show();
                     }
                 },
-                err -> Toast.makeText(this, "Network error (subcategories)", Toast.LENGTH_SHORT).show()
+                err -> Toast.makeText(this, I18n.t(this, "Network error (subcategories)"), Toast.LENGTH_SHORT).show()
         );
         req.setRetryPolicy(new DefaultRetryPolicy(8000, 1, 1));
         queue.add(req);
@@ -456,7 +568,7 @@ public class MainActivity extends AppCompatActivity {
                 resp -> {
                     try {
                         if (!"success".equalsIgnoreCase(resp.optString("status"))) {
-                            Toast.makeText(this, "Products error", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, I18n.t(this, "Products error"), Toast.LENGTH_SHORT).show();
                             return;
                         }
                         JSONArray arr = resp.optJSONArray("data");
@@ -470,7 +582,6 @@ public class MainActivity extends AppCompatActivity {
                                 m.put("subFilterId", o.optInt("subcategory_id", 0));
                                 m.put("title",       o.optString("title", ""));
 
-                                // price: server may send number; show as plain string for card
                                 m.put("price",
                                         o.opt("price") == null
                                                 ? ""
@@ -478,7 +589,6 @@ public class MainActivity extends AppCompatActivity {
 
                                 m.put("city", o.optString("city", ""));
 
-                                // ---- Product image (prefer image_url, fallback to image) ----
                                 String imageUrl = "";
                                 if (!o.isNull("image_url")) {
                                     imageUrl = o.optString("image_url", "");
@@ -486,19 +596,22 @@ public class MainActivity extends AppCompatActivity {
                                     imageUrl = o.optString("image", "");
                                 }
                                 m.put("imageUrl", imageUrl);
-                                // -------------------------------------------------------------
 
                                 m.put("isNew", o.optInt("is_new", 0) == 1);
                                 currentProducts.add(m);
                             }
                         }
                         bindProducts(new ArrayList<>(currentProducts));
-                        tvSectionTitle.setText(getString(R.string.featured_listings));
+                        if (tvSectionTitle != null) {
+                            tvSectionTitle.setText(
+                                    I18n.t(this, getString(R.string.featured_listings))
+                            );
+                        }
                     } catch (Exception e) {
-                        Toast.makeText(this, "Parse products failed", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, I18n.t(this, "Parse products failed"), Toast.LENGTH_SHORT).show();
                     }
                 },
-                err -> Toast.makeText(this, "Network error (products)", Toast.LENGTH_SHORT).show()
+                err -> Toast.makeText(this, I18n.t(this, "Network error (products)"), Toast.LENGTH_SHORT).show()
         );
         req.setRetryPolicy(new DefaultRetryPolicy(8000, 1, 1));
         queue.add(req);
@@ -513,14 +626,12 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (rvSubFiltersGrid.getVisibility() == View.VISIBLE) {
-            // Close sub-grid → show all products of selected category
             showProducts();
-            selectedSubFilterId = -1; // none selected
+            selectedSubFilterId = -1;
             fetchProducts();
             return;
         }
         if (selectedCategoryId != -1) {
-            // Clear category selection → show featured
             selectedCategoryId = -1;
             selectedSubFilterId = -1;
             showNew = null;
@@ -555,8 +666,11 @@ public class MainActivity extends AppCompatActivity {
         i.setType("text/plain");
         i.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.app_name));
         i.putExtra(Intent.EXTRA_TEXT, "Check out SheharSetu: https://play.google.com/store/apps/details?id=" + getPackageName());
-        try { startActivity(Intent.createChooser(i, "Share via")); }
-        catch (Exception e) { Toast.makeText(this, "No app found to share", Toast.LENGTH_SHORT).show(); }
+        try {
+            startActivity(Intent.createChooser(i, I18n.t(this, "Share via")));
+        } catch (Exception e) {
+            Toast.makeText(this, I18n.t(this, "No app found to share"), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void rateUs() {

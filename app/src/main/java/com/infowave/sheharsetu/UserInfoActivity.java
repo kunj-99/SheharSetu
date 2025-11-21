@@ -1,5 +1,6 @@
 package com.infowave.sheharsetu;
 
+import android.annotation.SuppressLint;
 import android.app.Dialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -647,6 +648,7 @@ public class UserInfoActivity extends AppCompatActivity {
     }
 
     /* --------------------------- OTP bottom sheet --------------------------- */
+    @SuppressLint("SetTextI18n")
     private void showOtpSheet(String mobile) {
         if (otpDialog != null && otpDialog.isShowing()) otpDialog.dismiss();
         if (resendTimer != null) resendTimer.cancel();
@@ -832,6 +834,7 @@ public class UserInfoActivity extends AppCompatActivity {
      * Translates a list of English strings to the current language.
      * Uses same cache as I18n; very fast on repeat.
      */
+    @SuppressLint("NewApi")
     private void translateListAsync(ArrayList<String> english,
                                     java.util.function.Consumer<ArrayList<String>> onSuccess,
                                     Runnable onError) {
@@ -881,7 +884,7 @@ public class UserInfoActivity extends AppCompatActivity {
             return;
         }
 
-        StringRequest req = new StringRequest(
+        @SuppressLint({"NewApi", "LocalSuppress"}) StringRequest req = new StringRequest(
                 Request.Method.POST,
                 G_TRANSLATE_URL,
                 resp -> {

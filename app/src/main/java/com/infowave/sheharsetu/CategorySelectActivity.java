@@ -1,6 +1,7 @@
 package com.infowave.sheharsetu;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.TextView;
@@ -14,14 +15,16 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.android.volley.Request;
 import com.android.volley.toolbox.StringRequest;
-import com.infowave.sheharsetu.Adapter.CategoryGridAdapter;
-import com.infowave.sheharsetu.Adapter.SubcategoryGridAdapter;
-import com.infowave.sheharsetu.net.ApiRoutes;
-import com.infowave.sheharsetu.net.VolleySingleton;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
+import com.infowave.sheharsetu.Adapter.CategoryGridAdapter;
+import com.infowave.sheharsetu.Adapter.I18n;
+import com.infowave.sheharsetu.Adapter.LanguageManager;
+import com.infowave.sheharsetu.Adapter.SubcategoryGridAdapter;
+import com.infowave.sheharsetu.net.ApiRoutes;
+import com.infowave.sheharsetu.net.VolleySingleton;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -52,9 +55,16 @@ public class CategorySelectActivity extends AppCompatActivity {
     private CategoryGridAdapter categoryAdapter;
     private SubcategoryGridAdapter subcategoryAdapter;
 
+    // === Locale prefs (same as LanguageSelection / I18n) ===
+    private static final String PREFS    = LanguageSelection.PREFS;         // "sheharsetu_prefs"
+    private static final String KEY_LANG = LanguageSelection.KEY_LANG_CODE; // "app_lang_code"
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Apply user-selected language to this Activity
+        applySavedLocale();
 
         // Status / navigation bar colors as before
         getWindow().setStatusBarColor(android.graphics.Color.BLACK);
@@ -67,12 +77,18 @@ public class CategorySelectActivity extends AppCompatActivity {
         setContentView(R.layout.activity_category_select);
 
         bindViews();
+        prefetchAndApplyStaticTexts();
         setupLists();
         setupClicks();
 
-        // yahi method naam same rakha – ab ye API se data layega
         seedData();
         updateCtaState();
+    }
+
+    private void applySavedLocale() {
+        SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String lang = sp.getString(KEY_LANG, "en");
+        LanguageManager.apply(this, lang);
     }
 
     private void bindViews() {
@@ -81,16 +97,73 @@ public class CategorySelectActivity extends AppCompatActivity {
             topBar.setNavigationOnClickListener(v -> onBackPressed());
         }
 
-        rvCategories = findViewById(R.id.rvCategories);
+        rvCategories    = findViewById(R.id.rvCategories);
         rvSubcategories = findViewById(R.id.rvSubcategories);
-        tvSubTitle = findViewById(R.id.tvSubTitle);
+        tvSubTitle      = findViewById(R.id.tvSubTitle);
 
         conditionRow = findViewById(R.id.conditionRow);
-        cgCondition = findViewById(R.id.cgCondition);
-        chipNew = findViewById(R.id.chipNew);
-        chipUsed = findViewById(R.id.chipUsed);
+        cgCondition  = findViewById(R.id.cgCondition);
+        chipNew      = findViewById(R.id.chipNew);
+        chipUsed     = findViewById(R.id.chipUsed);
 
-        btnContinue = findViewById(R.id.btnContinue);
+        btnContinue  = findViewById(R.id.btnContinue);
+    }
+
+    /**
+     * Prefetch and apply translations for static labels on this screen.
+     */
+    private void prefetchAndApplyStaticTexts() {
+        List<String> keys = new ArrayList<>();
+
+        if (topBar != null && topBar.getTitle() != null) {
+            keys.add(topBar.getTitle().toString());
+        }
+        if (tvSubTitle != null && tvSubTitle.getText() != null) {
+            keys.add(tvSubTitle.getText().toString());
+        }
+        if (chipNew != null && chipNew.getText() != null) {
+            keys.add(chipNew.getText().toString());
+        }
+        if (chipUsed != null && chipUsed.getText() != null) {
+            keys.add(chipUsed.getText().toString());
+        }
+        if (btnContinue != null && btnContinue.getText() != null) {
+            keys.add(btnContinue.getText().toString());
+        }
+
+        // Runtime messages
+        keys.add("Failed to load categories.");
+        keys.add("Parsing error (categories).");
+        keys.add("Unable to load categories. Please check internet.");
+        keys.add("Failed to load subcategories.");
+        keys.add("Parsing error (subcategories).");
+        keys.add("Unable to load subcategories. Please check internet.");
+        keys.add("Please select a category.");
+        keys.add("Please select a subcategory.");
+        keys.add("Please select condition (New/Used).");
+
+        I18n.prefetch(this, keys, () -> {
+            if (topBar != null && topBar.getTitle() != null) {
+                topBar.setTitle(I18n.t(CategorySelectActivity.this,
+                        topBar.getTitle().toString()));
+            }
+            if (tvSubTitle != null && tvSubTitle.getText() != null) {
+                tvSubTitle.setText(I18n.t(CategorySelectActivity.this,
+                        tvSubTitle.getText().toString()));
+            }
+            if (chipNew != null && chipNew.getText() != null) {
+                chipNew.setText(I18n.t(CategorySelectActivity.this,
+                        chipNew.getText().toString()));
+            }
+            if (chipUsed != null && chipUsed.getText() != null) {
+                chipUsed.setText(I18n.t(CategorySelectActivity.this,
+                        chipUsed.getText().toString()));
+            }
+            if (btnContinue != null && btnContinue.getText() != null) {
+                btnContinue.setText(I18n.t(CategorySelectActivity.this,
+                        btnContinue.getText().toString()));
+            }
+        });
     }
 
     private void seedData() {
@@ -109,13 +182,17 @@ public class CategorySelectActivity extends AppCompatActivity {
                         String status = root.optString("status", "");
                         if (!"success".equalsIgnoreCase(status)) {
                             Toast.makeText(this,
-                                    root.optString("message", "Failed to load categories."),
+                                    I18n.t(this,
+                                            root.optString("message",
+                                                    "Failed to load categories.")),
                                     Toast.LENGTH_SHORT).show();
                             return;
                         }
 
                         JSONArray dataArr = root.optJSONArray("data");
                         categories.clear();
+
+                        List<String> catNameKeys = new ArrayList<>();
 
                         if (dataArr != null) {
                             for (int i = 0; i < dataArr.length(); i++) {
@@ -133,21 +210,27 @@ public class CategorySelectActivity extends AppCompatActivity {
                                             iconUrl,
                                             requiresCond
                                     ));
+                                    catNameKeys.add(name);
                                 }
                             }
                         }
 
-                        categoryAdapter.submit(mapToCategoryItems(categories));
+                        // Prefetch translations for category names then submit to adapter
+                        I18n.prefetch(this, catNameKeys, () ->
+                                categoryAdapter.submit(mapToCategoryItems(categories))
+                        );
 
                     } catch (JSONException e) {
                         e.printStackTrace();
-                        Toast.makeText(this, "Parsing error (categories).", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this,
+                                I18n.t(this, "Parsing error (categories)."),
+                                Toast.LENGTH_SHORT).show();
                     }
                 },
                 error -> {
                     error.printStackTrace();
                     Toast.makeText(this,
-                            "Unable to load categories. Please check internet.",
+                            I18n.t(this, "Unable to load categories. Please check internet."),
                             Toast.LENGTH_SHORT).show();
                 }
         );
@@ -206,18 +289,24 @@ public class CategorySelectActivity extends AppCompatActivity {
 
         btnContinue.setOnClickListener(v -> {
             if (selectedCategory == null) {
-                Toast.makeText(this, "Please select a category.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this,
+                        I18n.t(this, "Please select a category."),
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
             if (selectedSub == null) {
-                Toast.makeText(this, "Please select a subcategory.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this,
+                        I18n.t(this, "Please select a subcategory."),
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
             boolean needCond = (selectedSub.requiresCondition != null)
                     ? selectedSub.requiresCondition
                     : selectedCategory.requiresCondition;
             if (needCond && selectedCondition == null) {
-                Toast.makeText(this, "Please select condition (New/Used).", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this,
+                        I18n.t(this, "Please select condition (New/Used)."),
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
 
@@ -235,13 +324,18 @@ public class CategorySelectActivity extends AppCompatActivity {
     }
 
     private void loadSubcategories(String catId) {
+        // If already loaded once, re-use and just translate names via cache.
         if (subMap.containsKey(catId)) {
             List<Subcategory> cached = subMap.get(catId);
             List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
             if (cached != null) {
                 for (Subcategory s : cached) {
                     ui.add(new SubcategoryGridAdapter.Item(
-                            s.id, s.parentId, s.name, s.iconUrl, s.requiresCondition
+                            s.id,
+                            s.parentId,
+                            I18n.t(this, s.name),
+                            s.iconUrl,
+                            s.requiresCondition
                     ));
                 }
             }
@@ -260,14 +354,16 @@ public class CategorySelectActivity extends AppCompatActivity {
                         String status = root.optString("status", "");
                         if (!"success".equalsIgnoreCase(status)) {
                             Toast.makeText(this,
-                                    root.optString("message", "Failed to load subcategories."),
+                                    I18n.t(this,
+                                            root.optString("message",
+                                                    "Failed to load subcategories.")),
                                     Toast.LENGTH_SHORT).show();
                             return;
                         }
 
                         JSONArray dataArr = root.optJSONArray("data");
                         List<Subcategory> subs = new ArrayList<>();
-                        List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
+                        List<String> subNameKeys = new ArrayList<>();
 
                         if (dataArr != null) {
                             for (int i = 0; i < dataArr.length(); i++) {
@@ -283,30 +379,43 @@ public class CategorySelectActivity extends AppCompatActivity {
                                             id,
                                             catId,
                                             name,
-                                            iconUrl,  // Use the icon URL fetched from API
+                                            iconUrl,
                                             requiresCond
                                     );
                                     subs.add(s);
-                                    ui.add(new SubcategoryGridAdapter.Item(
-                                            s.id, s.parentId, s.name, s.iconUrl, s.requiresCondition
-                                    ));
+                                    subNameKeys.add(name);
                                 }
                             }
                         }
 
                         subMap.put(catId, subs);
 
-                        subcategoryAdapter.submit(ui);
+                        // Prefetch translations for subcategory names
+                        I18n.prefetch(this, subNameKeys, () -> {
+                            List<SubcategoryGridAdapter.Item> ui = new ArrayList<>();
+                            for (Subcategory s : subs) {
+                                ui.add(new SubcategoryGridAdapter.Item(
+                                        s.id,
+                                        s.parentId,
+                                        I18n.t(CategorySelectActivity.this, s.name),
+                                        s.iconUrl,
+                                        s.requiresCondition
+                                ));
+                            }
+                            subcategoryAdapter.submit(ui);
+                        });
 
                     } catch (JSONException e) {
                         e.printStackTrace();
-                        Toast.makeText(this, "Parsing error (subcategories).", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this,
+                                I18n.t(this, "Parsing error (subcategories)."),
+                                Toast.LENGTH_SHORT).show();
                     }
                 },
                 error -> {
                     error.printStackTrace();
                     Toast.makeText(this,
-                            "Unable to load subcategories. Please check internet.",
+                            I18n.t(this, "Unable to load subcategories. Please check internet."),
                             Toast.LENGTH_SHORT).show();
                 }
         );
@@ -331,7 +440,13 @@ public class CategorySelectActivity extends AppCompatActivity {
     private List<CategoryGridAdapter.Item> mapToCategoryItems(List<Category> list) {
         List<CategoryGridAdapter.Item> out = new ArrayList<>();
         for (Category c : list) {
-            out.add(new CategoryGridAdapter.Item(c.id, c.name, c.iconUrl, c.requiresCondition));
+            String displayName = I18n.t(this, c.name);
+            out.add(new CategoryGridAdapter.Item(
+                    c.id,
+                    displayName,
+                    c.iconUrl,
+                    c.requiresCondition
+            ));
         }
         return out;
     }
