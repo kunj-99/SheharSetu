@@ -7,6 +7,7 @@ import android.location.Address;
 import android.location.Geocoder;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -259,38 +260,45 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
             payload.put("title", title);
             payload.put("form_data", formResult);
 
+            // disable button to prevent duplicate submissions
             btnSubmit.setEnabled(false);
+            toast("Submitting your form...");
 
+            // Request to submit form data to the server
             JsonObjectRequest req = new JsonObjectRequest(
                     Request.Method.POST,
                     ApiRoutes.CREATE_LISTING,
                     payload,
-                    resp -> {
+                    response -> {
+                        // enable button after response
                         btnSubmit.setEnabled(true);
-                        boolean ok = resp.optBoolean("success", false);
-                        String msg = resp.optString("message", ok ? "Listing created" : "Failed to create listing");
-                        toast(msg);
-                        if (ok) {
-                            // long listingId = resp.optLong("listing_id", 0L);
-                            // यहाँ बाद में detail screen पर जा सकते हैं
-                            finish();
+
+                        boolean success = response.optBoolean("success", false);
+                        String message = response.optString("message", success ? "Listing created" : "Failed to create listing");
+
+                        toast(message); // Show response message
+
+                        // After successful submission, finish activity (if successful)
+                        if (success) {
+                            finish(); // close the form screen
                         }
                     },
                     error -> {
-                        btnSubmit.setEnabled(true);
-                        String msg = "Server error";
+                        btnSubmit.setEnabled(true); // Enable button on error
+                        String errorMsg = "Server error";
                         if (error != null && error.networkResponse != null) {
-                            msg = "Error " + error.networkResponse.statusCode;
+                            errorMsg = "Error " + error.networkResponse.statusCode;
                         }
-                        toast(msg);
+                        toast(errorMsg); // Show error message
                     }
             );
 
+            // Add the request to the queue
             VolleySingleton.getInstance(this).add(req);
 
         } catch (Exception e) {
-            btnSubmit.setEnabled(true);
-            toast("Error preparing request");
+            btnSubmit.setEnabled(true); // Enable button on exception
+            toast("Error preparing request: " + e.getMessage());
         }
     }
 
