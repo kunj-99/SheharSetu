@@ -1,12 +1,14 @@
 package com.infowave.sheharsetu;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.location.Address;
 import android.location.Geocoder;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -18,11 +20,12 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
-import androidx.core.graphics.Insets;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -34,15 +37,16 @@ import com.infowave.sheharsetu.Adapter.DynamicFormAdapter;
 import com.infowave.sheharsetu.net.ApiRoutes;
 import com.infowave.sheharsetu.net.VolleySingleton;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 public class DynamicFormActivity extends AppCompatActivity implements DynamicFormAdapter.Callbacks {
+
+    private static final String TAG = "DynamicFormActivity";
 
     public static final String EXTRA_CATEGORY = "categoryName";
     public static final String RESULT_JSON    = "formResultJson";
@@ -58,23 +62,29 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
 
     private FusedLocationProviderClient fused;
 
-    // NEW: user + category info (for create_listing.php)
+    // user + category info (for create_listing.php)
     private long userId;
     private long categoryId;
     private long subcategoryId;
+
+    // Remember category name for title
+    private String categoryName;
 
     /* ---------------- Photo pickers ---------------- */
 
     private final ActivityResultLauncher<String> coverPicker =
             registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
-                if (uri != null && currentPhotoFieldKey != null) {
+                Log.d(TAG, "coverPicker result: " + uri + " for fieldKey=" + currentPhotoFieldKey);
+                if (uri != null && currentPhotoFieldKey != null && adapter != null) {
                     adapter.setCoverPhoto(currentPhotoFieldKey, uri);
                 }
             });
 
     private final ActivityResultLauncher<String> morePicker =
             registerForActivityResult(new ActivityResultContracts.GetMultipleContents(), uris -> {
-                if (uris != null && currentPhotoFieldKey != null) {
+                Log.d(TAG, "morePicker result size=" + (uris == null ? 0 : uris.size()) +
+                        " for fieldKey=" + currentPhotoFieldKey);
+                if (uris != null && currentPhotoFieldKey != null && adapter != null) {
                     adapter.addMorePhotos(currentPhotoFieldKey, uris);
                 }
             });
@@ -83,10 +93,13 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
 
     private final ActivityResultLauncher<String> locationPerm =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                Log.d(TAG, "Location permission result: " + granted +
+                        " for fieldKey=" + pendingLocationFieldKey);
                 if (granted) fillMyLocation(pendingLocationFieldKey);
                 else toast("Location permission denied");
             });
 
+    @SuppressLint("SetTextI18n")
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -99,32 +112,68 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
 
         fused = LocationServices.getFusedLocationProviderClient(this);
 
-        // category name (UI only)
-        String category = getIntent().getStringExtra(EXTRA_CATEGORY);
-        if (category == null) category = "General";
-        tvTitle.setText("Dynamic Form (" + category + ")");
+        Intent intent = getIntent();
 
-        // IDs from CategorySelectActivity (ensure you are putting them in intent)
-        categoryId    = getIntent().getLongExtra("category_id", 0L);
-        subcategoryId = getIntent().getLongExtra("subcategory_id", 0L);
+        // category name (UI only)
+        String category = intent.getStringExtra(EXTRA_CATEGORY);
+        if (category == null) category = "General";
+        categoryName = category;
+        tvTitle.setText("Dynamic Form (" + categoryName + ")");
+
+        // --------- READ category_id / subcategory_id safely (String or Long) ----------
+        String catIdStr = intent.getStringExtra("category_id");
+        String subIdStr = intent.getStringExtra("subcategory_id");
+
+        Log.d(TAG, "Raw extras: category_id(str)=" + catIdStr + ", subcategory_id(str)=" + subIdStr);
+
+        // if coming as String (current case)
+        categoryId = parseLongSafe(catIdStr);
+        subcategoryId = parseLongSafe(subIdStr);
+
+        // if future me Long ke form me bhejo, extra safety:
+        if (categoryId == 0) {
+            long tmp = intent.getLongExtra("category_id", 0L);
+            if (tmp != 0L) {
+                Log.d(TAG, "category_id also found as Long extra: " + tmp);
+                categoryId = tmp;
+            }
+        }
+        if (subcategoryId == 0) {
+            long tmp = intent.getLongExtra("subcategory_id", 0L);
+            if (tmp != 0L) {
+                Log.d(TAG, "subcategory_id also found as Long extra: " + tmp);
+                subcategoryId = tmp;
+            }
+        }
 
         // user_id from SharedPreferences (you must set it after login/OTP verify)
         SharedPreferences prefs = getSharedPreferences("user", MODE_PRIVATE);
         userId = prefs.getLong("user_id", 0L);
 
-        List<Map<String, Object>> schema = buildSchema(category);
+        Log.d(TAG, "onCreate: categoryName=" + categoryName +
+                " categoryId=" + categoryId +
+                " subcategoryId=" + subcategoryId +
+                " userId=" + userId);
 
-        adapter = new DynamicFormAdapter(schema, this);
         rvForm.setLayoutManager(new LinearLayoutManager(this));
-        rvForm.setAdapter(adapter);
+
+        // Load schema from server (DB-based) ONLY. Fallback is disabled for debugging.
+        loadSchemaFromServer(categoryId, subcategoryId);
 
         btnSubmit.setOnClickListener(v -> {
+            Log.d(TAG, "Submit clicked");
+            if (adapter == null) {
+                toast("Form is not ready yet, please wait...");
+                Log.e(TAG, "Submit pressed but adapter is null");
+                return;
+            }
             JSONObject result = adapter.validateAndBuildResult();
             if (result == null) {
                 toast("Please complete required fields correctly.");
+                Log.e(TAG, "validateAndBuildResult() returned null");
                 return;
             }
-            // पहले हम result JSON को server पर भेजेंगे
+            Log.d(TAG, "validateAndBuildResult() success: " + result.toString());
             submitListing(result);
         });
 
@@ -148,75 +197,171 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
         });
     }
 
-    /** Build schema (same जैसा पहले) */
-    private List<Map<String, Object>> buildSchema(String category) {
-        String catLower = category.trim().toLowerCase(Locale.ROOT);
+    private long parseLongSafe(String s) {
+        if (TextUtils.isEmpty(s)) return 0L;
+        try {
+            return Long.parseLong(s.trim());
+        } catch (Exception e) {
+            Log.w(TAG, "parseLongSafe failed for '" + s + "' : " + e.getMessage());
+            return 0L;
+        }
+    }
 
-        if (catLower.contains("vehicle") || catLower.contains("bike") ||
-                catLower.contains("car") || catLower.contains("electronics")) {
+    /**
+     * Load form schema from backend (get_form_schema.php) using categoryId + subcategoryId.
+     * Fallback to static schema is DISABLED to debug dynamic Transport issue.
+     */
+    private void loadSchemaFromServer(long categoryId, long subcategoryId) {
+        Log.d(TAG, "loadSchemaFromServer() called with categoryId=" + categoryId +
+                ", subcategoryId=" + subcategoryId + ", categoryName=" + categoryName);
 
-            java.util.ArrayList<Map<String, Object>> list = new java.util.ArrayList<>();
-            add(list, "photos", field("Upload Photos", "Clear, no blur", "PHOTOS", true));
-
-            add(list, "brand",      field("Brand",        "Enter brand",              "TEXT",     true));
-            add(list, "model",      dropdown("Model",     "Select model",             true, Arrays.asList("Select...", "Model A", "Model B", "Model C")));
-            add(list, "year",       field("Year",         "Enter year (e.g., 2022)",  "NUMBER",   true));
-            add(list, "fuel_type",  dropdown("Fuel Type", "Select fuel",              true, Arrays.asList("Select...", "Petrol", "Diesel", "CNG", "Electric", "Hybrid")));
-            add(list, "kilometers", field("Kilometers",   "Total driven (km)",        "NUMBER",   false));
-            add(list, "transmission", dropdown("Transmission","Select transmission",  false, Arrays.asList("Select...", "Manual", "Automatic", "AMT", "CVT")));
-
-            add(list, "price",      field("Price (₹)",    "₹",                        "CURRENCY", true));
-            add(list, "negotiable", field("Negotiable",   "",                         "SWITCH",   false));
-
-            add(list, "location",   field("Location",     "Enter location",           "LOCATION", false));
-            add(list, "whatsapp",   field("WhatsApp",     "",                         "SWITCH",   false));
-            add(list, "description",field("Description",  "Write details...",         "TEXTAREA", false));
-            add(list, "accept_terms", checkbox("Accept Terms","You must accept terms to continue", true));
-            return list;
+        if (categoryId <= 0) {
+            String msg = "Category info missing (categoryId<=0). Cannot load dynamic schema.";
+            Log.e(TAG, msg);
+            toast(msg);
+            return; // NO fallback
         }
 
-        // Generic
-        java.util.ArrayList<Map<String, Object>> list = new java.util.ArrayList<>();
-        add(list, "full_name",  field("Full Name", "Enter your full name", "TEXT",  true));
-        add(list, "phone",      field("Phone Number", "Enter your mobile number", "PHONE", true));
-        add(list, "email",      field("Email", "Enter a valid email", "EMAIL", false));
-        add(list, "dob",        field("Date of Birth", "Select your date of birth", "DATE", false));
+        StringBuilder urlBuilder = new StringBuilder(ApiRoutes.GET_FORM_SCHEMA);
+        urlBuilder.append("?category_id=").append(categoryId);
+        if (subcategoryId > 0) {
+            urlBuilder.append("&subcategory_id=").append(subcategoryId);
+        }
+        urlBuilder.append("&lang=en");
 
-        // अलग category logic यहाँ add कर सकते हैं (जैसा पहले था)
+        String url = urlBuilder.toString();
+        Log.d(TAG, "Requesting schema from URL: " + url);
 
-        add(list, "remarks",   field("Remarks", "Additional notes (optional)", "TEXT", false));
-        add(list, "accept_terms", checkbox("Accept Terms", "You must accept terms to continue", true));
-        return list;
-    }
+        JsonObjectRequest req = new JsonObjectRequest(
+                Request.Method.GET,
+                url,
+                null,
+                response -> {
+                    try {
+                        Log.d(TAG, "Schema raw response: " + response.toString());
 
-    private void add(List<Map<String, Object>> list, String key, Map<String, Object> m) {
-        m.put("key", key);
-        list.add(m);
-    }
+                        boolean success = response.optBoolean("success", false);
+                        String msg = response.optString("message", "");
+                        Log.d(TAG, "Schema success=" + success + " message=" + msg);
 
-    private Map<String, Object> field(String label, String hint, String type, boolean required) {
-        Map<String, Object> m = new HashMap<>();
-        m.put("label", label);
-        m.put("hint", hint);
-        m.put("type", type);
-        m.put("required", required);
-        return m;
-    }
+                        if (!success) {
+                            toast(TextUtils.isEmpty(msg) ? "Failed to load form schema" : msg);
+                            Log.e(TAG, "Backend returned success=false for schema, aborting.");
+                            return; // NO fallback
+                        }
 
-    private Map<String, Object> dropdown(String label, String hint, boolean required, List<String> options) {
-        Map<String, Object> m = field(label, hint, "DROPDOWN", required);
-        m.put("options", options);
-        return m;
-    }
+                        JSONObject data = response.optJSONObject("data");
+                        if (data == null) {
+                            toast("Invalid schema response (data=null).");
+                            Log.e(TAG, "Response data is null");
+                            return;
+                        }
 
-    private Map<String, Object> checkbox(String label, String hint, boolean required) {
-        return field(label, hint, "CHECKBOX", required);
+                        JSONObject catObj = data.optJSONObject("category");
+                        JSONObject subObj = data.optJSONObject("subcategory");
+                        Log.d(TAG, "Category from server: " + (catObj == null ? "null" : catObj.toString()));
+                        Log.d(TAG, "Subcategory from server: " + (subObj == null ? "null" : subObj.toString()));
+
+                        JSONArray schemaArr = data.optJSONArray("schema");
+                        if (schemaArr == null) {
+                            toast("No schema array returned.");
+                            Log.e(TAG, "schemaArr is null");
+                            return;
+                        }
+
+                        Log.d(TAG, "Schema array length: " + schemaArr.length());
+
+                        java.util.ArrayList<Map<String, Object>> schema = new java.util.ArrayList<>();
+
+                        for (int i = 0; i < schemaArr.length(); i++) {
+                            JSONObject field = schemaArr.optJSONObject(i);
+                            if (field == null) {
+                                Log.w(TAG, "schemaArr[" + i + "] is null, skipping");
+                                continue;
+                            }
+
+                            Map<String, Object> m = new HashMap<>();
+                            String key = field.optString("key", "");
+                            String label = field.optString("label", "");
+                            String hint = field.optString("hint", "");
+                            String type = field.optString("type", "TEXT");
+                            boolean required = field.optBoolean("required", false);
+                            String unit = field.optString("unit", "");
+
+                            m.put("key",      key);
+                            m.put("label",    label);
+                            m.put("hint",     hint);
+                            m.put("type",     type);
+                            m.put("required", required);
+                            m.put("unit",     unit);
+
+                            JSONArray optsArr = field.optJSONArray("options");
+                            if (optsArr != null && optsArr.length() > 0) {
+                                java.util.ArrayList<Map<String, Object>> opts = new java.util.ArrayList<>();
+                                for (int j = 0; j < optsArr.length(); j++) {
+                                    JSONObject opt = optsArr.optJSONObject(j);
+                                    if (opt == null) {
+                                        Log.w(TAG, "options[" + j + "] for field " + key + " is null");
+                                        continue;
+                                    }
+                                    Map<String, Object> om = new HashMap<>();
+                                    String oVal = opt.optString("value", "");
+                                    String oLab = opt.optString("label", "");
+                                    om.put("value", oVal);
+                                    om.put("label", oLab);
+                                    opts.add(om);
+                                }
+                                m.put("options", opts);
+                                Log.d(TAG, "Field[" + i + "] key=" + key + " type=" + type +
+                                        " required=" + required +
+                                        " optionsCount=" + opts.size());
+                            } else {
+                                Log.d(TAG, "Field[" + i + "] key=" + key + " type=" + type +
+                                        " required=" + required + " optionsCount=0");
+                            }
+
+                            schema.add(m);
+                        }
+
+                        Log.d(TAG, "Final schema list size after parsing: " + schema.size());
+
+                        if (schema.isEmpty()) {
+                            toast("Empty schema received from server.");
+                            Log.e(TAG, "Schema list is empty, not setting adapter");
+                        } else {
+                            adapter = new DynamicFormAdapter(schema, this);
+                            rvForm.setAdapter(adapter);
+                            Log.d(TAG, "Adapter set with itemCount=" + adapter.getItemCount());
+                        }
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Schema parse error", e);
+                        toast("Error parsing schema.");
+                    }
+                },
+                error -> {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("Schema request error: ").append(error.toString());
+                    if (error.networkResponse != null) {
+                        sb.append(" statusCode=").append(error.networkResponse.statusCode);
+                        if (error.networkResponse.data != null) {
+                            sb.append(" body=")
+                                    .append(new String(error.networkResponse.data));
+                        }
+                    }
+                    Log.e(TAG, sb.toString());
+                    toast("Unable to load form. Please try again.");
+                }
+        );
+
+        VolleySingleton.getInstance(this).add(req);
     }
 
     /* ================== Callbacks from Adapter ================== */
 
     @Override
     public void pickCoverPhoto(String fieldKey) {
+        Log.d(TAG, "pickCoverPhoto called for key=" + fieldKey);
         currentPhotoFieldKey = fieldKey;
         requestReadPhotoPermissionIfNeeded();
         coverPicker.launch("image/*");
@@ -224,6 +369,7 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
 
     @Override
     public void pickMorePhotos(String fieldKey) {
+        Log.d(TAG, "pickMorePhotos called for key=" + fieldKey);
         currentPhotoFieldKey = fieldKey;
         requestReadPhotoPermissionIfNeeded();
         morePicker.launch("image/*");
@@ -231,22 +377,30 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
 
     @Override
     public void requestMyLocation(String fieldKey) {
+        Log.d(TAG, "requestMyLocation called for key=" + fieldKey);
         pendingLocationFieldKey = fieldKey;
         locationPerm.launch(Manifest.permission.ACCESS_FINE_LOCATION);
     }
 
     @Override
-    public void showToast(String msg) { toast(msg); }
+    public void showToast(String msg) {
+        toast(msg);
+    }
 
     /* ================== Networking: submit listing ================== */
 
     private void submitListing(JSONObject formResult) {
+        Log.d(TAG, "submitListing() called, userId=" + userId +
+                " categoryId=" + categoryId + " subcategoryId=" + subcategoryId);
+
         if (userId <= 0) {
             toast("User not logged in. Please login again.");
+            Log.e(TAG, "submitListing: userId<=0");
             return;
         }
         if (categoryId <= 0) {
             toast("Category information missing.");
+            Log.e(TAG, "submitListing: categoryId<=0");
             return;
         }
 
@@ -260,55 +414,68 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
             payload.put("title", title);
             payload.put("form_data", formResult);
 
-            // disable button to prevent duplicate submissions
+            Log.d(TAG, "submitListing payload: " + payload.toString());
+
             btnSubmit.setEnabled(false);
             toast("Submitting your form...");
 
-            // Request to submit form data to the server
             JsonObjectRequest req = new JsonObjectRequest(
                     Request.Method.POST,
                     ApiRoutes.CREATE_LISTING,
                     payload,
                     response -> {
-                        // enable button after response
                         btnSubmit.setEnabled(true);
+                        Log.d(TAG, "submitListing response: " + response.toString());
 
                         boolean success = response.optBoolean("success", false);
-                        String message = response.optString("message", success ? "Listing created" : "Failed to create listing");
+                        String message = response.optString("message",
+                                success ? "Listing created" : "Failed to create listing");
 
-                        toast(message); // Show response message
+                        toast(message);
 
-                        // After successful submission, finish activity (if successful)
                         if (success) {
-                            finish(); // close the form screen
+                            Log.d(TAG, "Listing created successfully, finishing activity");
+                            finish();
+                        } else {
+                            Log.e(TAG, "Listing creation failed");
                         }
                     },
                     error -> {
-                        btnSubmit.setEnabled(true); // Enable button on error
+                        btnSubmit.setEnabled(true);
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("submitListing error: ").append(error.toString());
+                        if (error.networkResponse != null) {
+                            sb.append(" statusCode=").append(error.networkResponse.statusCode);
+                            if (error.networkResponse.data != null) {
+                                sb.append(" body=")
+                                        .append(new String(error.networkResponse.data));
+                            }
+                        }
+                        Log.e(TAG, sb.toString());
                         String errorMsg = "Server error";
-                        if (error != null && error.networkResponse != null) {
+                        if (error.networkResponse != null) {
                             errorMsg = "Error " + error.networkResponse.statusCode;
                         }
-                        toast(errorMsg); // Show error message
+                        toast(errorMsg);
                     }
             );
 
-            // Add the request to the queue
             VolleySingleton.getInstance(this).add(req);
 
         } catch (Exception e) {
-            btnSubmit.setEnabled(true); // Enable button on exception
+            btnSubmit.setEnabled(true);
+            Log.e(TAG, "Error preparing request", e);
             toast("Error preparing request: " + e.getMessage());
         }
     }
 
-    /** Title बनाने के लिए छोटा helper */
+    /** Title helper (same logic, with logs) */
     private String buildTitleFromForm(JSONObject form) {
         try {
-            String brand  = form.optString("brand", "").trim();
-            String model  = form.optString("model", "").trim();
-            String year   = form.optString("year", "").trim();
-            String product= form.optString("product", "").trim();
+            String brand   = form.optString("brand", "").trim();
+            String model   = form.optString("model", "").trim();
+            String year    = form.optString("year", "").trim();
+            String product = form.optString("product", "").trim();
 
             StringBuilder sb = new StringBuilder();
             if (!brand.isEmpty()) sb.append(brand);
@@ -326,8 +493,11 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
             if (sb.length() == 0) {
                 sb.append("Listing");
             }
-            return sb.toString();
+            String title = sb.toString();
+            Log.d(TAG, "buildTitleFromForm => " + title);
+            return title;
         } catch (Exception e) {
+            Log.e(TAG, "buildTitleFromForm error", e);
             return "Listing";
         }
     }
@@ -336,21 +506,31 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
 
     private void requestReadPhotoPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33) {
-            // system picker – कोई extra permission नहीं
+            Log.d(TAG, "No READ_EXTERNAL_STORAGE permission required (SDK>=33)");
         } else {
+            Log.d(TAG, "Requesting READ_EXTERNAL_STORAGE permission");
             ActivityCompat.requestPermissions(
                     this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 1231);
         }
     }
 
     private void fillMyLocation(String fieldKey) {
-        if (fieldKey == null) return;
+        Log.d(TAG, "fillMyLocation() for fieldKey=" + fieldKey);
+        if (fieldKey == null || adapter == null) {
+            Log.e(TAG, "fillMyLocation aborted: fieldKey or adapter is null");
+            return;
+        }
         try {
             fused.getLastLocation().addOnSuccessListener(loc -> {
-                if (loc == null) { toast("Unable to fetch location"); return; }
+                if (loc == null) {
+                    toast("Unable to fetch location");
+                    Log.e(TAG, "getLastLocation returned null");
+                    return;
+                }
                 try {
                     Geocoder geo = new Geocoder(this, Locale.getDefault());
-                    java.util.List<Address> res = geo.getFromLocation(loc.getLatitude(), loc.getLongitude(), 1);
+                    java.util.List<Address> res = geo.getFromLocation(
+                            loc.getLatitude(), loc.getLongitude(), 1);
                     String addr;
                     if (res != null && !res.isEmpty()) {
                         Address a = res.get(0);
@@ -361,40 +541,44 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
                     } else {
                         addr = loc.getLatitude() + "," + loc.getLongitude();
                     }
+                    Log.d(TAG, "Resolved location: " + addr);
                     adapter.setTextAnswer(fieldKey, addr);
                     toast("Location set");
                 } catch (Exception e) {
+                    Log.e(TAG, "Geocoder failed", e);
                     toast("Geocoder failed");
                 }
             });
-        } catch (SecurityException ignored) { }
+        } catch (SecurityException e) {
+            Log.e(TAG, "SecurityException in fillMyLocation", e);
+        }
     }
 
     private void applyThemeBarsAndWidgets() {
         try {
             getWindow().setStatusBarColor(
-                    androidx.core.content.ContextCompat.getColor(this, R.color.black));
+                    ContextCompat.getColor(this, R.color.black));
             getWindow().setNavigationBarColor(
-                    androidx.core.content.ContextCompat.getColor(this, R.color.black));
+                    ContextCompat.getColor(this, R.color.black));
             getWindow().getDecorView().setSystemUiVisibility(0);
         } catch (Exception ignored) { }
 
         View root = findViewById(R.id.root);
         if (root != null) {
             root.setBackgroundColor(
-                    androidx.core.content.ContextCompat.getColor(this, R.color.ss_surface));
+                    ContextCompat.getColor(this, R.color.ss_surface));
         }
 
         try {
             androidx.appcompat.widget.Toolbar tb = findViewById(R.id.topBar);
             if (tb != null) {
                 tb.setBackgroundColor(
-                        androidx.core.content.ContextCompat.getColor(this, R.color.ss_primary));
+                        ContextCompat.getColor(this, R.color.ss_primary));
                 tb.setTitleTextColor(
-                        androidx.core.content.ContextCompat.getColor(this, android.R.color.white));
+                        ContextCompat.getColor(this, android.R.color.white));
                 if (tb.getNavigationIcon() != null) {
                     tb.getNavigationIcon().setTint(
-                            androidx.core.content.ContextCompat.getColor(this, android.R.color.white));
+                            ContextCompat.getColor(this, android.R.color.white));
                 }
             }
         } catch (Exception ignored) { }
@@ -403,12 +587,19 @@ public class DynamicFormActivity extends AppCompatActivity implements DynamicFor
             Button btn = findViewById(R.id.btnSubmit);
             if (btn != null) {
                 btn.setBackground(
-                        androidx.core.content.ContextCompat.getDrawable(this, R.drawable.bg_btn_primary));
+                        ContextCompat.getDrawable(this, R.drawable.bg_btn_primary));
                 btn.setTextColor(
-                        androidx.core.content.ContextCompat.getColor(this, android.R.color.white));
+                        ContextCompat.getColor(this, android.R.color.white));
             }
         } catch (Exception ignored) { }
     }
 
-    private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
+    private void toast(String s) {
+        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+    }
+
+    /* NOTE:
+       Static buildSchema / fallback completely removed.
+       Ab sirf DB se dynamic schema hi chalega.
+    */
 }

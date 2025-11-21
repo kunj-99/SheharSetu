@@ -30,6 +30,5 @@ public final class ApiRoutes {
     public static final String CREATE_LISTING    = BASE_URL + "/create_listing.php";
 
 
-
     private ApiRoutes() {}
 }

@@ -1,5 +1,6 @@
 package com.infowave.sheharsetu.Adapter;
 
+import android.annotation.SuppressLint;
 import android.app.DatePickerDialog;
 import android.content.Context;
 import android.database.Cursor;
@@ -7,6 +8,7 @@ import android.net.Uri;
 import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -29,12 +31,14 @@ import java.util.*;
  * Adapter for dynamic form:
  * Field map keys:
  *  - key, label, hint, type (TEXT, NUMBER, PHONE, EMAIL, DATE, DROPDOWN, CHECKBOX, SWITCH, TEXTAREA, CURRENCY, LOCATION, PHOTOS)
- *  - required (Boolean)
+ *  - required (Boolean/Number/String)
  *  - options:
  *      - static mode: List<String>
  *      - backend mode: List<Map<String,Object>> with "value" and "label"
  */
 public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+
+    private static final String TAG = "DynamicFormAdapter";
 
     /* ================= Callbacks to Activity ================= */
     public interface Callbacks {
@@ -64,6 +68,22 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         this.fields = fields != null ? fields : new ArrayList<>();
         this.callbacks = callbacks;
 
+        Log.d(TAG, "Adapter init with fields size=" + this.fields.size());
+        int idx = 0;
+        for (Map<String, Object> f : this.fields) {
+            String key  = s(f.get("key"));
+            String type = s(f.get("type"));
+            boolean required = req(f);
+            Object opts = f.get("options");
+            int optsCount = 0;
+            if (opts instanceof List) optsCount = ((List<?>) opts).size();
+            Log.d(TAG, "Field[" + idx + "] key=" + key +
+                    " type=" + type +
+                    " required=" + required +
+                    " optionsCount=" + optsCount);
+            idx++;
+        }
+
         // initialize answers
         for (Map<String, Object> f : this.fields) {
             String key = s(f.get("key"));
@@ -84,9 +104,11 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                     answers.put(key, "");
             }
         }
+        Log.d(TAG, "Answers initialized for all fields");
     }
 
-    @Override public int getItemViewType(int position) {
+    @Override
+    public int getItemViewType(int position) {
         String t = s(fields.get(position).get("type")).toUpperCase(Locale.ROOT);
         switch (t) {
             case "DATE":     return T_DATE;
@@ -101,7 +123,8 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         }
     }
 
-    @NonNull @Override
+    @NonNull
+    @Override
     public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int vt) {
         LayoutInflater inf = LayoutInflater.from(parent.getContext());
         if (vt == T_DATE)        return new VHDate(inf.inflate(R.layout.item_form_date, parent, false));
@@ -115,6 +138,7 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         return new VHText(inf.inflate(R.layout.item_form_text, parent, false));
     }
 
+    @SuppressLint("SetTextI18n")
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int pos) {
         Map<String, Object> f = fields.get(pos);
@@ -122,6 +146,8 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         String label = s(f.get("label"));
         String hint  = s(f.get("hint"));
         String type  = s(f.get("type"));
+
+        Log.d(TAG, "onBindViewHolder pos=" + pos + " key=" + key + " type=" + type);
 
         if (h instanceof VHText) {
             VHText vh = (VHText) h;
@@ -179,12 +205,10 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
             final Context ctx = vh.itemView.getContext();
 
-            // ----- options ko normalize karo -----
             Object optObj = f.get("options");
             List<String> displayList = new ArrayList<>();
             List<String> valueList   = new ArrayList<>();
 
-            // position 0 = "Select..." (hint)
             displayList.add("Select...");
             valueList.add("");
 
@@ -206,13 +230,15 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                     }
                 }
             }
+            Log.d(TAG, "Dropdown key=" + key + " options displayCount=" + displayList.size() +
+                    " valueCount=" + valueList.size());
 
             final List<String> finalDisplay = displayList;
             final List<String> finalValues  = valueList;
 
             ArrayAdapter<String> ad = new ArrayAdapter<String>(ctx, R.layout.spinner_item, finalDisplay) {
                 @Override public boolean isEnabled(int position) {
-                    return position != 0; // disable "Select..."
+                    return position != 0;
                 }
                 @Override public View getDropDownView(int position, View convertView, ViewGroup parent) {
                     View v = super.getDropDownView(position, convertView, parent);
@@ -239,18 +265,20 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             ad.setDropDownViewResource(R.layout.spinner_dropdown_item);
             vh.spinner.setAdapter(ad);
 
-            // Saved value = actual "value"
             String saved = s(answers.get(key));
-            int idx = finalValues.indexOf(saved);
-            if (idx < 0) idx = 0;
-            vh.spinner.setSelection(idx);
+            int idxSaved = finalValues.indexOf(saved);
+            if (idxSaved < 0) idxSaved = 0;
+            vh.spinner.setSelection(idxSaved);
+            Log.d(TAG, "Dropdown key=" + key + " savedValue=" + saved + " index=" + idxSaved);
 
             vh.spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                     if (position == 0) {
                         answers.put(key, "");
+                        Log.d(TAG, "Dropdown key=" + key + " set to empty (position 0)");
                     } else {
-                        answers.put(key, finalValues.get(position)); // store VALUE
+                        answers.put(key, finalValues.get(position));
+                        Log.d(TAG, "Dropdown key=" + key + " set to value=" + finalValues.get(position));
                     }
 
                     if (view instanceof TextView) {
@@ -275,22 +303,34 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             vh.cb.setText(hint);
             boolean checked = answers.get(key) instanceof Boolean && (Boolean) answers.get(key);
             vh.cb.setChecked(checked);
-            vh.cb.setOnCheckedChangeListener((buttonView, isChecked) -> answers.put(key, isChecked));
+            vh.cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                answers.put(key, isChecked);
+                Log.d(TAG, "Checkbox key=" + key + " changed to " + isChecked);
+            });
 
         } else if (h instanceof VHSwitch) {
             VHSwitch vh = (VHSwitch) h;
             vh.tvLabel.setText(label);
             boolean on = answers.get(key) instanceof Boolean && (Boolean) answers.get(key);
             vh.sw.setChecked(on);
-            vh.sw.setOnCheckedChangeListener((buttonView, isChecked) -> answers.put(key, isChecked));
+            vh.sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                answers.put(key, isChecked);
+                Log.d(TAG, "Switch key=" + key + " changed to " + isChecked);
+            });
 
         } else if (h instanceof VHLocation) {
             VHLocation vh = (VHLocation) h;
             vh.tvLabel.setText(label + (req(f) ? " *" : ""));
             vh.etLocation.setHint(hint);
             vh.etLocation.setText(s(answers.get(key)));
-            vh.etLocation.addTextChangedListener(new SimpleTextWatcher(s -> answers.put(key, s)));
-            vh.btnUseMyLocation.setOnClickListener(v -> { if (callbacks != null) callbacks.requestMyLocation(key); });
+            vh.etLocation.addTextChangedListener(new SimpleTextWatcher(s -> {
+                answers.put(key, s);
+                Log.d(TAG, "Location key=" + key + " text changed to: " + s);
+            }));
+            vh.btnUseMyLocation.setOnClickListener(v -> {
+                Log.d(TAG, "UseMyLocation clicked for key=" + key);
+                if (callbacks != null) callbacks.requestMyLocation(key);
+            });
 
         } else if (h instanceof VHPhotos) {
             VHPhotos vh = (VHPhotos) h;
@@ -307,6 +347,8 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             List<String> more = ph == null ? new ArrayList<>() : (List<String>) ph.get("more");
             if (more == null) more = new ArrayList<>();
 
+            Log.d(TAG, "Photos key=" + key + " cover=" + cover + " moreCount=" + more.size());
+
             if (vh.rv.getLayoutManager() == null) {
                 vh.rv.setLayoutManager(new LinearLayoutManager(vh.itemView.getContext(), RecyclerView.HORIZONTAL, false));
             }
@@ -317,16 +359,19 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                     new PhotosStripAdapter.Events() {
                         @Override
                         public void onAddMore(String fieldKey) {
+                            Log.d(TAG, "Photos onAddMore for key=" + fieldKey);
                             if (callbacks != null) callbacks.pickMorePhotos(fieldKey);
                         }
 
                         @Override
                         public void onSetCover(String fieldKey, int indexInList, Uri uri) {
+                            Log.d(TAG, "Photos onSetCover key=" + fieldKey + " index=" + indexInList + " uri=" + uri);
                             setCoverFromMore(fieldKey, indexInList);
                         }
 
                         @Override
                         public void onRemove(String fieldKey, String uriStr) {
+                            Log.d(TAG, "Photos onRemove key=" + fieldKey + " uri=" + uriStr);
                             removePhoto(fieldKey, uriStr);
                         }
                     }
@@ -340,7 +385,12 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         }
     }
 
-    @Override public int getItemCount() { return fields.size(); }
+    @Override
+    public int getItemCount() {
+        int size = fields.size();
+        Log.d(TAG, "getItemCount() = " + size);
+        return size;
+    }
 
     /* ================= Photos helpers ================= */
 
@@ -356,9 +406,12 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         String newCover = more.get(indexInMore);
         more.set(indexInMore, currentCover);
         ph.put("cover", newCover);
+        Log.d(TAG, "setCoverFromMore key=" + fieldKey +
+                " newCover=" + newCover + " oldCover=" + currentCover);
         notifyDataSetChanged();
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void removePhoto(String fieldKey, String uri) {
         @SuppressWarnings("unchecked")
         Map<String, Object> ph = (Map<String, Object>) answers.get(fieldKey);
@@ -380,27 +433,34 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 ph.put("cover", more.get(0));
                 more.remove(0);
                 toast("Cover removed. Promoted next image as cover.");
+                Log.d(TAG, "removePhoto: cover removed, promoted next as cover");
             } else {
                 toast("Photo removed.");
+                Log.d(TAG, "removePhoto: removed non-cover photo");
             }
             notifyDataSetChanged();
         }
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void setTextAnswer(String fieldKey, String value) {
+        Log.d(TAG, "setTextAnswer key=" + fieldKey + " value=" + value);
         answers.put(fieldKey, value == null ? "" : value);
         notifyDataSetChanged();
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void setCoverPhoto(String fieldKey, Uri uri) {
         if (uri == null) return;
         @SuppressWarnings("unchecked")
         Map<String, Object> ph = (Map<String, Object>) answers.get(fieldKey);
         if (ph == null) return;
         ph.put("cover", uri.toString());
+        Log.d(TAG, "setCoverPhoto key=" + fieldKey + " uri=" + uri);
         notifyDataSetChanged();
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void addMorePhotos(String fieldKey, List<Uri> uris) {
         if (uris == null || uris.isEmpty()) return;
 
@@ -428,6 +488,12 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             for (Uri u : uris) if (u != null) more.add(u.toString());
         }
 
+        Log.d(TAG, "addMorePhotos key=" + fieldKey +
+                " urisAdded=" + uris.size() +
+                " coverWasEmpty=" + coverWasEmpty +
+                " newCover=" + s(ph.get("cover")) +
+                " moreCount=" + more.size());
+
         notifyDataSetChanged();
         if (coverWasEmpty) {
             toast("First photo set as cover. Tap any thumbnail to change or remove.");
@@ -440,6 +506,7 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
     public JSONObject validateAndBuildResult() {
         try {
+            Log.d(TAG, "validateAndBuildResult() started");
             for (Map<String, Object> f : fields) {
                 String key = s(f.get("key"));
                 String label = s(f.get("label"));
@@ -449,29 +516,44 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 Object val = answers.get(key);
                 String sval = val == null ? "" : String.valueOf(val);
 
+                Log.d(TAG, "Validating key=" + key + " type=" + type +
+                        " required=" + required + " value=" + sval);
+
                 if (required) {
                     if ("CHECKBOX".equalsIgnoreCase(type)) {
                         if (!(val instanceof Boolean) || !((Boolean) val)) {
-                            toast("Please accept: " + label); return null;
+                            toast("Please accept: " + label);
+                            Log.e(TAG, "Validation failed: checkbox not accepted for " + key);
+                            return null;
                         }
                     } else if ("DROPDOWN".equalsIgnoreCase(type)) {
-                        // VALUE empty => not selected
                         if (TextUtils.isEmpty(sval)) {
-                            toast("Please select " + label); return null;
+                            toast("Please select " + label);
+                            Log.e(TAG, "Validation failed: dropdown empty for " + key);
+                            return null;
                         }
                     } else if ("PHOTOS".equalsIgnoreCase(type)) {
                         @SuppressWarnings("unchecked")
                         Map<String, Object> ph = (Map<String, Object>) val;
                         String cover = ph == null ? "" : s(ph.get("cover"));
-                        if (TextUtils.isEmpty(cover)) { toast("Please add a cover photo"); return null; }
+                        if (TextUtils.isEmpty(cover)) {
+                            toast("Please add a cover photo");
+                            Log.e(TAG, "Validation failed: no cover photo for " + key);
+                            return null;
+                        }
                     } else {
-                        if (TextUtils.isEmpty(sval)) { toast(label + " is required"); return null; }
+                        if (TextUtils.isEmpty(sval)) {
+                            toast(label + " is required");
+                            Log.e(TAG, "Validation failed: empty text for " + key);
+                            return null;
+                        }
                     }
                 }
 
                 if ("EMAIL".equalsIgnoreCase(type) && !TextUtils.isEmpty(sval) &&
                         !android.util.Patterns.EMAIL_ADDRESS.matcher(sval).matches()) {
                     toast("Please enter a valid Email");
+                    Log.e(TAG, "Validation failed: invalid email for key=" + key);
                     return null;
                 }
             }
@@ -497,9 +579,11 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                     result.put(key, v);
                 }
             }
+            Log.d(TAG, "validateAndBuildResult() final JSON: " + result.toString());
             return result;
 
         } catch (Exception e) {
+            Log.e(TAG, "Error building JSON", e);
             toast("Error building JSON");
             return null;
         }
@@ -531,14 +615,19 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             this.events = events;
         }
 
-        @Override public int getItemCount() { return (TextUtils.isEmpty(cover) ? 0 : 1) + more.size() + 1; }
+        @Override
+        public int getItemCount() {
+            return (TextUtils.isEmpty(cover) ? 0 : 1) + more.size() + 1;
+        }
 
-        @Override public int getItemViewType(int position) {
+        @Override
+        public int getItemViewType(int position) {
             int thumbs = (TextUtils.isEmpty(cover) ? 0 : 1) + more.size();
             return position == thumbs ? V_ADD : V_THUMB;
         }
 
-        @NonNull @Override
+        @NonNull
+        @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int vt) {
             LayoutInflater inf = LayoutInflater.from(parent.getContext());
             if (vt == V_ADD) {
@@ -557,7 +646,6 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 return;
             }
 
-            // ---- Thumbnail binding ----
             Uri uri;
             boolean isCover;
             int idxInMore;
@@ -583,14 +671,12 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             }
             vh.name.setText(fileName(vh.itemView.getContext(), uri));
 
-            // Remove button
             vh.remove.setVisibility(View.VISIBLE);
             vh.remove.bringToFront();
             vh.remove.setOnClickListener(v -> {
                 if (events != null) events.onRemove(fieldKey, uri.toString());
             });
 
-            // Tap/long-press to set cover for non-cover items
             if (!isCover) {
                 vh.itemView.setOnClickListener(v -> {
                     if (events != null) events.onSetCover(fieldKey, idxInMore, uri);
@@ -616,7 +702,9 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 remove = v.findViewById(R.id.ivRemove);
             }
         }
-        static class VHAdd extends RecyclerView.ViewHolder { VHAdd(@NonNull View v) { super(v); } }
+        static class VHAdd extends RecyclerView.ViewHolder {
+            VHAdd(@NonNull View v) { super(v); }
+        }
 
         private static String fileName(Context ctx, Uri uri) {
             String result = null;
@@ -640,36 +728,77 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
     static class VHText extends RecyclerView.ViewHolder {
         TextView tvLabel; EditText etValue;
-        VHText(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); etValue = v.findViewById(R.id.etValue); }
+        VHText(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            etValue = v.findViewById(R.id.etValue);
+        }
     }
+
     static class VHTextArea extends RecyclerView.ViewHolder {
         TextView tvLabel; EditText etValue;
-        VHTextArea(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); etValue = v.findViewById(R.id.etValue); }
+        VHTextArea(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            etValue = v.findViewById(R.id.etValue);
+        }
     }
+
     static class VHCurrencies extends RecyclerView.ViewHolder {
         TextView tvLabel; EditText etValue;
-        VHCurrencies(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); etValue = v.findViewById(R.id.etValue); }
+        VHCurrencies(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            etValue = v.findViewById(R.id.etValue);
+        }
     }
+
     static class VHDate extends RecyclerView.ViewHolder {
         TextView tvLabel; EditText etDate;
-        VHDate(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); etDate = v.findViewById(R.id.etDate); }
+        VHDate(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            etDate = v.findViewById(R.id.etDate);
+        }
     }
+
     static class VHDropdown extends RecyclerView.ViewHolder {
         TextView tvLabel; Spinner spinner;
-        VHDropdown(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); spinner = v.findViewById(R.id.spinner); }
+        VHDropdown(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            spinner = v.findViewById(R.id.spinner);
+        }
     }
+
     static class VHCheckbox extends RecyclerView.ViewHolder {
         TextView tvLabel; CheckBox cb;
-        VHCheckbox(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); cb = v.findViewById(R.id.cb); }
+        VHCheckbox(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            cb = v.findViewById(R.id.cb);
+        }
     }
+
     static class VHSwitch extends RecyclerView.ViewHolder {
         TextView tvLabel; Switch sw;
-        VHSwitch(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); sw = v.findViewById(R.id.sw); }
+        VHSwitch(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            sw = v.findViewById(R.id.sw);
+        }
     }
+
     static class VHLocation extends RecyclerView.ViewHolder {
         TextView tvLabel; EditText etLocation; Button btnUseMyLocation;
-        VHLocation(@NonNull View v) { super(v); tvLabel = v.findViewById(R.id.tvLabel); etLocation = v.findViewById(R.id.etLocation); btnUseMyLocation = v.findViewById(R.id.btnUseMyLocation); }
+        VHLocation(@NonNull View v) {
+            super(v);
+            tvLabel = v.findViewById(R.id.tvLabel);
+            etLocation = v.findViewById(R.id.etLocation);
+            btnUseMyLocation = v.findViewById(R.id.btnUseMyLocation);
+        }
     }
+
     static class VHPhotos extends RecyclerView.ViewHolder {
         TextView tvLabel, tvHelper, tvTip, tvPhotoStatus; RecyclerView rv;
         VHPhotos(@NonNull View v) {
@@ -684,16 +813,30 @@ public class DynamicFormAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
     /* ================= Utils ================= */
     private static String s(Object o) { return o == null ? "" : String.valueOf(o); }
+
     private static boolean req(Map<String, Object> f) {
         Object r = f.get("required");
-        return r instanceof Boolean && (Boolean) r;
+        if (r instanceof Boolean) {
+            return (Boolean) r;
+        }
+        if (r instanceof Number) {
+            return ((Number) r).intValue() != 0;
+        }
+        if (r instanceof String) {
+            String s = ((String) r).trim().toLowerCase(Locale.ROOT);
+            return s.equals("1") || s.equals("true") || s.equals("yes");
+        }
+        return false;
     }
 
     public interface OnText { void on(String s); }
     static class SimpleTextWatcher implements android.text.TextWatcher {
-        private final OnText cb; SimpleTextWatcher(OnText cb){this.cb=cb;}
+        private final OnText cb;
+        SimpleTextWatcher(OnText cb){this.cb=cb;}
         @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-        @Override public void onTextChanged(CharSequence s, int start, int before, int count) { if (cb!=null) cb.on(s.toString()); }
+        @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+            if (cb!=null) cb.on(s.toString());
+        }
         @Override public void afterTextChanged(android.text.Editable s) {}
     }
 }
