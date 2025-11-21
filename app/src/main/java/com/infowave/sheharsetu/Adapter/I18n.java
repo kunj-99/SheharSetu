@@ -1,5 +1,6 @@
 package com.infowave.sheharsetu.Adapter;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.text.Html;
@@ -161,7 +162,7 @@ public final class I18n {
                             JSONObject ti = arr.optJSONObject(i);
                             if (ti == null) continue;
                             String html = ti.optString("translatedText", en);
-                            String plain = Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString();
+                            @SuppressLint({"NewApi", "LocalSuppress"}) String plain = Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString();
 
                             String cacheKey = "v1|" + l + "|" + en;
                             ed.putString(cacheKey, plain);

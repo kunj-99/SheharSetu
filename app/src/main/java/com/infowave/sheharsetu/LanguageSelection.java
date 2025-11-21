@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
@@ -49,6 +50,8 @@ public class LanguageSelection extends AppCompatActivity implements LanguageAdap
     public static final String KEY_LANG_CODE = "app_lang_code";
     public static final String KEY_LANG_NAME = "app_lang_name";
 
+    private static final String TAG = "LanguageSelection";
+
     private RecyclerView rv;
     private ProgressBar progress;
     private final List<String[]> languages = new ArrayList<>();
@@ -68,6 +71,7 @@ public class LanguageSelection extends AppCompatActivity implements LanguageAdap
         SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
         String saved = sp.getString(KEY_LANG_CODE, null);
         if (saved != null) {
+            Log.d(TAG, "Saved language found: " + saved + " → skipping selection screen");
             LanguageManager.apply(this, saved);
             goNext();
             return;
@@ -84,6 +88,7 @@ public class LanguageSelection extends AppCompatActivity implements LanguageAdap
         adapter = new LanguageAdapter(languages, this);
         rv.setAdapter(adapter);
 
+        Log.d(TAG, "onCreate: calling fetchLanguages()");
         fetchLanguages();
     }
 
@@ -91,27 +96,29 @@ public class LanguageSelection extends AppCompatActivity implements LanguageAdap
     private void fetchLanguages() {
         showLoading(true);
 
+        Log.d(TAG, "fetchLanguages: URL = " + ApiRoutes.GET_LANGUAGES);
+
         JsonObjectRequest req = new JsonObjectRequest(
                 Request.Method.GET,
                 ApiRoutes.GET_LANGUAGES,
                 null,
                 resp -> {
+                    Log.d(TAG, "onResponse: " + resp.toString());
                     try {
                         languages.clear();
                         boolean ok = resp.optBoolean("ok", false);
                         if (!ok) {
-                            Toast.makeText(this, "Failed to load languages", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "Failed to load languages (ok=false)", Toast.LENGTH_SHORT).show();
                             showLoading(false);
                             return;
                         }
                         JSONArray arr = resp.optJSONArray("data");
                         if (arr == null || arr.length() == 0) {
-                            Toast.makeText(this, "No languages found", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "No languages found (empty data)", Toast.LENGTH_SHORT).show();
                             showLoading(false);
                             return;
                         }
 
-                        // Prefer English on top if present
                         int englishIndex = -1;
 
                         for (int i = 0; i < arr.length(); i++) {
@@ -125,13 +132,17 @@ public class LanguageSelection extends AppCompatActivity implements LanguageAdap
                             String englishName = o.optString("english_name", "").trim();
                             if (code.isEmpty() || nativeName.isEmpty()) continue;
 
-                            // LanguageAdapter expects String[]{code, native, english}
                             languages.add(new String[]{code, nativeName, englishName});
 
                             if ("en".equalsIgnoreCase(code)) englishIndex = languages.size() - 1;
                         }
 
-                        // Ensure English first (optional nicety)
+                        if (languages.isEmpty()) {
+                            Toast.makeText(this, "No enabled languages after parsing", Toast.LENGTH_SHORT).show();
+                            showLoading(false);
+                            return;
+                        }
+
                         if (englishIndex > 0) {
                             String[] en = languages.remove(englishIndex);
                             languages.add(0, en);
@@ -139,24 +150,41 @@ public class LanguageSelection extends AppCompatActivity implements LanguageAdap
 
                         adapter.notifyDataSetChanged();
                     } catch (Exception e) {
-                        Toast.makeText(this, "Parse error", Toast.LENGTH_SHORT).show();
+                        Log.e(TAG, "Parse error in fetchLanguages", e);
+                        Toast.makeText(this, "Parse error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     }
                     showLoading(false);
                 },
                 err -> {
-                    Toast.makeText(this, "Network error", Toast.LENGTH_SHORT).show();
+                    String message = "Network error";
+                    try {
+                        if (err.networkResponse != null) {
+                            int code = err.networkResponse.statusCode;
+                            String body = new String(err.networkResponse.data);
+                            message = "HTTP " + code + ": " + body;
+                            Log.e(TAG, "Volley error body: " + body);
+                        } else if (err.getMessage() != null) {
+                            message = err.getMessage();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error reading Volley error body", e);
+                    }
+                    Log.e(TAG, "fetchLanguages Volley error", err);
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
                     showLoading(false);
                 }
-        ){
-            @Override public Map<String, String> getHeaders() throws AuthFailureError {
+        ) {
+            @Override
+            public Map<String, String> getHeaders() throws AuthFailureError {
                 HashMap<String, String> h = new HashMap<>();
                 h.put("Content-Type", "application/json; charset=utf-8");
-                // Accept-Language optional: server ko hint dena ho to
                 String current = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_LANG_CODE, "en");
                 h.put("Accept-Language", current == null ? "en" : current);
+                Log.d(TAG, "Request headers: " + h.toString());
                 return h;
             }
         };
+
         req.setRetryPolicy(new DefaultRetryPolicy(12000, 1, 1.0f));
         VolleySingleton.getInstance(this).add(req);
     }
@@ -179,7 +207,6 @@ public class LanguageSelection extends AppCompatActivity implements LanguageAdap
     }
 
     private void goNext() {
-        // first time → register page
         startActivity(new Intent(this, UserInfoActivity.class));
         overridePendingTransition(R.anim.fade_in, R.anim.fade_out);
         finish();

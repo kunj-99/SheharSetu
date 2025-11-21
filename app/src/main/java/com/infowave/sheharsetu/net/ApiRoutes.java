@@ -2,7 +2,7 @@ package com.infowave.sheharsetu.net;
 
 public final class ApiRoutes {
     // अपने सर्वर का बेस URL भरो (trailing slash के बिना)
-    public static final String BASE_URL = "https://darkseagreen-opossum-292390.hostingersite.com/api";
+    public static final String BASE_URL = "https://netrainstituteofdesign.com/api";
 
     public static final String SEND_OTP   = BASE_URL + "/send_otp.php";
     public static final String VERIFY_OTP = BASE_URL + "/verify_otp.php";
